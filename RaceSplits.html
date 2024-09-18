@@ -22,7 +22,7 @@
         .split-row {
             margin: 10px 0;
         }
-        .split-result, .projected {
+        .split-result, .projected, .mile-pace {
             display: block;
             margin-top: 5px;
             font-weight: bold;
@@ -58,7 +58,7 @@
         <label for="race-length">Race Length: </label>
         <input type="number" id="race-length" placeholder="<Enter>">
         <div class="preset-buttons">
-			<button onclick="setPreset('800M')">800M</button>
+            <button onclick="setPreset('800M')">800M</button>
             <button onclick="setPreset('1600M')">1600M</button>
             <button onclick="setPreset('5k')">5K</button>
         </div>
@@ -71,6 +71,7 @@
             <button onclick="recordSplit(1)">Split</button>
             <span class="split-result" id="split-time-1"></span>
             <span class="projected" id="projected-time-1"></span>
+            <span class="mile-pace" id="mile-pace-1"></span>
         </div>
         <div class="split-row">
             <label>Distance 2: </label>
@@ -78,6 +79,7 @@
             <button onclick="recordSplit(2)">Split</button>
             <span class="split-result" id="split-time-2"></span>
             <span class="projected" id="projected-time-2"></span>
+            <span class="mile-pace" id="mile-pace-2"></span>
         </div>
         <div class="split-row">
             <label>Distance 3: </label>
@@ -85,6 +87,7 @@
             <button onclick="recordSplit(3)">Split</button>
             <span class="split-result" id="split-time-3"></span>
             <span class="projected" id="projected-time-3"></span>
+            <span class="mile-pace" id="mile-pace-3"></span>
         </div>
         <div class="split-row">
             <label>Distance 4: </label>
@@ -92,6 +95,7 @@
             <button onclick="recordSplit(4)">Split</button>
             <span class="split-result" id="split-time-4"></span>
             <span class="projected" id="projected-time-4"></span>
+            <span class="mile-pace" id="mile-pace-4"></span>
         </div>
         <div class="split-row">
             <label>Distance 5: </label>
@@ -99,6 +103,7 @@
             <button onclick="recordSplit(5)">Split</button>
             <span class="split-result" id="split-time-5"></span>
             <span class="projected" id="projected-time-5"></span>
+            <span class="mile-pace" id="mile-pace-5"></span>
         </div>
     </div>
 
@@ -168,11 +173,15 @@
             const projectedFinishTime = (currentSplitTime * raceLength) / splitDistance;
             const projectedFinishFormatted = formatTime(projectedFinishTime);
             document.getElementById('projected-time-' + index).textContent = `Projected Finish: ${projectedFinishFormatted}`;
+
+            // Calculate mile pace
+            const milePace = (currentSplitTime * 1600) / splitDistance;
+            const milePaceFormatted = formatTime(milePace);
+            document.getElementById('mile-pace-' + index).textContent = `Mile Pace: ${milePaceFormatted}`;
         }
 
-        // Preset race length and split distances
         function setPreset(type) {
-		    if (type === '800M') {
+            if (type === '800M') {
                 document.getElementById('race-length').value = 800;
                 document.getElementById('split-1').value = 200;
                 document.getElementById('split-2').value = 400;
