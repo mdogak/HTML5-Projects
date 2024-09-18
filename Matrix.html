@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Code Rain</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrixCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas dimensions
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Characters - Katakana, numbers, and Latin letters
+        const matrixCharacters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789アイクコサシスセソタチツトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
+
+        const fontSize = 16;
+        const columns = canvas.width / fontSize; // Number of columns for the rain
+
+        // Array of drops, one per column
+        const drops = new Array(Math.floor(columns)).fill(1);
+
+        // Draw the characters
+        function drawMatrix() {
+            // Semi-transparent black background to create fading effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Set text color and font
+            ctx.fillStyle = '#0F0'; // Green color for the code
+            ctx.font = `${fontSize}px monospace`;
+
+            // Loop over the drops array
+            for (let i = 0; i < drops.length; i++) {
+                // Select a random character from the matrixCharacters string
+                const character = matrixCharacters.charAt(Math.floor(Math.random() * matrixCharacters.length));
+
+                // Draw the character at the current drop position (i * fontSize, y-coordinate)
+                ctx.fillText(character, i * fontSize, drops[i] * fontSize);
+
+                // Randomly reset the drop's y-coordinate if it reaches the bottom of the screen or randomly
+                if (drops[i] * fontSize > canvas.height || Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+
+                // Increment the y-coordinate to make the drop "fall"
+                drops[i]++;
+            }
+        }
+
+        // Run the drawMatrix function at a set interval
+        setInterval(drawMatrix, 33); // ~30 frames per second
+    </script>
+</body>
+</html>
