@@ -3,12 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Matrix Code Rain</title>
+    <title>Fullscreen Matrix Code</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
             background-color: black;
+        }
+        #fullscreenButton {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 10px 20px;
+            background-color: #0F0;
+            color: #000;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
         }
         canvas {
             display: block;
@@ -17,54 +29,63 @@
 </head>
 <body>
     <canvas id="matrixCanvas"></canvas>
+    <button id="fullscreenButton">Go Fullscreen</button>
 
     <script>
         const canvas = document.getElementById('matrixCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Set canvas dimensions
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        // Set canvas dimensions to fit the window
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
 
         // Characters - Katakana, numbers, and Latin letters
         const matrixCharacters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789アイクコサシスセソタチツトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
-
         const fontSize = 16;
         const columns = canvas.width / fontSize; // Number of columns for the rain
-
-        // Array of drops, one per column
-        const drops = new Array(Math.floor(columns)).fill(1);
+        const drops = new Array(Math.floor(columns)).fill(1); // One drop per column
 
         // Draw the characters
         function drawMatrix() {
-            // Semi-transparent black background to create fading effect
             ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Set text color and font
-            ctx.fillStyle = '#0F0'; // Green color for the code
+            ctx.fillStyle = '#0F0';
             ctx.font = `${fontSize}px monospace`;
 
-            // Loop over the drops array
             for (let i = 0; i < drops.length; i++) {
-                // Select a random character from the matrixCharacters string
                 const character = matrixCharacters.charAt(Math.floor(Math.random() * matrixCharacters.length));
-
-                // Draw the character at the current drop position (i * fontSize, y-coordinate)
                 ctx.fillText(character, i * fontSize, drops[i] * fontSize);
 
-                // Randomly reset the drop's y-coordinate if it reaches the bottom of the screen or randomly
                 if (drops[i] * fontSize > canvas.height || Math.random() > 0.975) {
                     drops[i] = 0;
                 }
-
-                // Increment the y-coordinate to make the drop "fall"
                 drops[i]++;
             }
         }
+        setInterval(drawMatrix, 33);
 
-        // Run the drawMatrix function at a set interval
-        setInterval(drawMatrix, 33); // ~30 frames per second
+        // Resize canvas if window is resized
+        window.addEventListener('resize', resizeCanvas);
+
+        // Fullscreen function
+        function goFullscreen() {
+            if (canvas.requestFullscreen) {
+                canvas.requestFullscreen();
+            } else if (canvas.mozRequestFullScreen) { // Firefox
+                canvas.mozRequestFullScreen();
+            } else if (canvas.webkitRequestFullscreen) { // Chrome, Safari, Opera
+                canvas.webkitRequestFullscreen();
+            } else if (canvas.msRequestFullscreen) { // IE/Edge
+                canvas.msRequestFullscreen();
+            }
+            document.getElementById('fullscreenButton').style.display = 'none'; // Hide the button after fullscreen
+        }
+
+        // Add event listener to the button
+        document.getElementById('fullscreenButton').addEventListener('click', goFullscreen);
     </script>
 </body>
 </html>
