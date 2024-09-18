@@ -50,20 +50,23 @@
     </style>
 </head>
 <body>
-    <div class="time-display" id="display">00:00:00.00</div>
-    <button id="startStopBtn" onclick="toggleStopwatch()">Start</button>
-    <button onclick="clearStopwatch()">Clear</button>
+
 
     <div style="margin-top: 30px;">
-        <label for="race-length">Race Length: </label>
-        <input type="number" id="race-length" placeholder="<Enter>">
+
         <div class="preset-buttons">
             <button onclick="setPreset('800M')">800M</button>
             <button onclick="setPreset('1600M')">1600M</button>
             <button onclick="setPreset('5k')">5K</button>
         </div>
+		<label for="race-length">Race Length: </label>
+        <input type="number" id="race-length" placeholder="<Enter>">
     </div>
-
+	<div style="margin-top: 30px;">
+    <div class="time-display" id="display">00:00:00.00</div>
+    <button id="startStopBtn" onclick="toggleStopwatch()">Start</button>
+    <button onclick="clearStopwatch()">Clear</button>
+	
     <div style="margin-top: 30px;">
         <div class="split-row">
             <label>Distance 1: </label>
