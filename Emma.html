@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flash Message</title>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: white;
+            font-family: Arial, sans-serif;
+        }
+
+        .message {
+            display: none;
+            font-size: 3em;
+            color: red;
+            text-align: center;
+        }
+
+        .flashing {
+            animation: flash 1s infinite alternate;
+        }
+
+        @keyframes flash {
+            0% {
+                background-color: white;
+                color: red;
+            }
+            100% {
+                background-color: black;
+                color: yellow;
+            }
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 1.5em;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="message" id="message">YOU ARE COMPLETELY ADEQUATE!</div>
+    <button id="startButton">Press Me!</button>
+
+    <script>
+        const button = document.getElementById('startButton');
+        const message = document.getElementById('message');
+
+        button.addEventListener('click', () => {
+            message.style.display = 'block';
+            message.classList.add('flashing');
+        });
+    </script>
+</body>
+</html>
