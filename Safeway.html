@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grocery List Organizer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        textarea, button {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            background-color: #f4f4f4;
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Safeway Grocery List Organizer</h1>
+    <label for="groceryList">Paste your grocery list:</label>
+    <textarea id="groceryList" rows="10" placeholder="Enter one item per line"></textarea>
+    <button onclick="organizeList()">Organize by Aisle</button>
+
+    <h2>Organized List:</h2>
+    <ul id="organizedList"></ul>
+
+    <script>
+        // Expanded mapping of groceries to Safeway aisles
+        const aisleMap = {
+            "milk": 2,
+            "eggs": 2,
+            "butter": 2,
+            "cheese": 2,
+            "yogurt": 2,
+            "cream": 2,
+            "ice cream": 3,
+            "frozen vegetables": 3,
+            "frozen pizza": 3,
+            "bread": 4,
+            "bagels": 4,
+            "tortillas": 4,
+            "pasta": 5,
+            "spaghetti": 5,
+            "rice": 5,
+            "quinoa": 5,
+            "flour": 5,
+            "sugar": 5,
+            "tomato sauce": 5,
+            "olive oil": 5,
+            "vegetable oil": 5,
+            "cereal": 6,
+            "oatmeal": 6,
+            "granola": 6,
+            "chips": 7,
+            "pretzels": 7,
+            "salsa": 7,
+            "crackers": 7,
+            "cookies": 7,
+            "popcorn": 7,
+            "coffee": 8,
+            "tea": 8,
+            "hot chocolate": 8,
+            "juice": 8,
+            "soda": 8,
+            "water": 9,
+            "sparkling water": 9,
+            "sports drinks": 9,
+            "beer": 9,
+            "wine": 9,
+            "chicken": 10,
+            "beef": 10,
+            "pork": 10,
+            "fish": 10,
+            "shrimp": 10,
+            "bacon": 10,
+            "sausage": 10,
+            "hot dogs": 10,
+            "lettuce": 11,
+            "spinach": 11,
+            "kale": 11,
+            "carrots": 11,
+            "celery": 11,
+            "broccoli": 11,
+            "cauliflower": 11,
+            "cucumbers": 11,
+            "zucchini": 11,
+            "potatoes": 12,
+            "sweet potatoes": 12,
+            "onions": 12,
+            "garlic": 12,
+            "mushrooms": 12,
+            "apples": 13,
+            "bananas": 13,
+            "oranges": 13,
+            "lemons": 13,
+            "limes": 13,
+            "grapes": 13,
+            "peaches": 13,
+            "plums": 13,
+            "cherries": 13,
+            "blueberries": 13,
+            "strawberries": 13,
+            "raspberries": 13,
+            "blackberries": 13,
+            "grapefruit": 13,
+            "pineapple": 13,
+            "watermelon": 13,
+            "cantaloupe": 13,
+            "honeydew": 13,
+            "tomatoes": 14,
+            "avocados": 14,
+            "bell peppers": 14,
+            "jalapenos": 14,
+            "corn": 14,
+            "peas": 14,
+            "green beans": 14,
+            "brussels sprouts": 14,
+            "asparagus": 14,
+            "cabbage": 14,
+            "spinach": 14,
+            "frozen fruit": 15,
+            "frozen waffles": 15,
+            "frozen meals": 15,
+            "frozen desserts": 15,
+            "ice cream cones": 15,
+            "ice cream sandwiches": 15,
+            "eggo waffles": 15,
+            "frozen pies": 15,
+            "pizza rolls": 15,
+            "microwave dinners": 15,
+            "diapers": 16,
+            "baby wipes": 16,
+            "formula": 16,
+            "baby food": 16,
+            "paper towels": 17,
+            "toilet paper": 17,
+            "napkins": 17,
+            "tissues": 17,
+            "aluminum foil": 17,
+            "plastic wrap": 17,
+            "ziplock bags": 17,
+            "trash bags": 17,
+            "dish soap": 18,
+            "laundry detergent": 18,
+            "fabric softener": 18,
+            "bleach": 18,
+            "cleaning spray": 18,
+            "sponges": 18,
+            "scrub brushes": 18,
+            "air freshener": 18,
+            "batteries": 19,
+            "light bulbs": 19,
+            "extension cords": 19,
+            "tools": 19,
+            "garden supplies": 19,
+            "charcoal": 19,
+            "lighter fluid": 19,
+            "matches": 19,
+            "pet food": 20,
+            "dog food": 20,
+            "cat food": 20,
+            "bird food": 20,
+            "fish food": 20,
+            "dog treats": 20,
+            "cat litter": 20,
+            "shampoo": 21,
+            "conditioner": 21,
+            "soap": 21,
+            "body wash": 21,
+            "deodorant": 21,
+            "toothpaste": 21,
+            "toothbrush": 21,
+            "mouthwash": 21,
+            "razors": 21,
+            "shaving cream": 21,
+            "lotion": 21,
+            "vitamins": 22,
+            "pain reliever": 22,
+            "cough syrup": 22,
+            "bandages": 22,
+            "first aid kit": 22,
+            "antibiotic ointment": 22,
+            "eye drops": 22,
+            "allergy medicine": 22,
+            "hand sanitizer": 22
+        };
+
+        function organizeList() {
+            const input = document.getElementById("groceryList").value;
+            const items = input.split('\n').map(item => item.trim().toLowerCase());
+            const organizedItems = [];
+
+            items.forEach(item => {
+                if (aisleMap[item]) {
+                    organizedItems.push({ name: item, aisle: aisleMap[item] });
+                } else {
+                    organizedItems.push({ name: item, aisle: 'Unknown aisle' });
+                }
+            });
+
+            displayOrganizedList(organizedItems);
+        }
+
+        function displayOrganizedList(organizedItems) {
+            const list = document.getElementById("organizedList");
+            list.innerHTML = ""; // Clear previous list
+
+            organizedItems.sort((a, b) => a.aisle - b.aisle); // Sort by aisle number
+
+            organizedItems.forEach(item => {
+                const li = document.createElement("li");
+                li.textContent = `${item.name.charAt(0).toUpperCase() + item.name.slice(1)} - Aisle: ${item.aisle}`;
+                list.appendChild(li);
+            });
+        }
+    </script>
+
+</body>
+</html>
