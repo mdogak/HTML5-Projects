@@ -182,10 +182,13 @@
         function clearStopwatch() {
             stopStopwatch();
             elapsedTime = 0;
-            document.getElementById('display').textContent = '00:00:00.00';
+            document.getElementById('display').textContent = '00:00:00.0';
             clearSplits();
             deleteCookie('elapsedTime');
             deleteCookie('running');
+            deleteCookie('raceLength');
+            deleteCookie('splitTimes');
+            deleteCookie('distances'); // Clear distances cookie
         }
 
         function clearSplits() {
@@ -196,7 +199,6 @@
                 document.getElementById('split-' + i).value = '';
             }
             document.getElementById('additional-splits').innerHTML = ''; // Clear additional splits
-            deleteCookie('splitTimes');
         }
 
         function recordSplit(index) {
@@ -237,6 +239,15 @@
                 });
             }
             setCookie('splitTimes', JSON.stringify(splits), 1);
+            saveDistances(); // Save distances after recording splits
+        }
+
+        function saveDistances() {
+            const distances = [];
+            for (let i = 1; i <= 5; i++) {
+                distances.push(document.getElementById('split-' + i).value);
+            }
+            setCookie('distances', JSON.stringify(distances), 1);
         }
 
         function loadSplits() {
@@ -252,6 +263,17 @@
             }
         }
 
+        function loadDistances() {
+            const distances = JSON.parse(getCookie('distances'));
+            if (distances) {
+                distances.forEach((distance, index) => {
+                    if (index < 5) {
+                        document.getElementById('split-' + (index + 1)).value = distance;
+                    }
+                });
+            }
+        }
+
         function loadElapsedTime() {
             const savedTime = getCookie('elapsedTime');
             if (savedTime) {
@@ -261,6 +283,13 @@
                 if (isRunning) {
                     startStopwatch();
                 }
+            }
+        }
+
+        function loadRaceLength() {
+            const raceLength = getCookie('raceLength');
+            if (raceLength) {
+                document.getElementById('race-length').value = raceLength;
             }
         }
 
@@ -295,12 +324,18 @@
             }
             // Set race length based on preset
             document.getElementById('race-length').value = distances[distances.length - 1];
+
+            // Save race length in cookie
+            setCookie('raceLength', distances[distances.length - 1], 1);
+            saveDistances(); // Save distances to cookie
         }
 
         // Load previous state on page load
         window.onload = function() {
             loadElapsedTime();
             loadSplits();
+            loadRaceLength();
+            loadDistances(); // Load distances on page load
         }
     </script>
 </body>
