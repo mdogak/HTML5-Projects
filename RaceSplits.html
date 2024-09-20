@@ -145,7 +145,7 @@
             const mins = Math.floor((totalSeconds % 3600) / 60);
             const secs = (totalSeconds % 60).toFixed(1); // Shows seconds with one decimal place
 
-            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(5, '0')}`;
+     	    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${Math.floor(secs).toString().padStart(2, '0')}.${(secs % 1).toFixed(1).slice(2)}`;
         }
 
         function toggleStopwatch() {
