@@ -120,7 +120,6 @@
     <script>
         let timer;
         let elapsedTime = 0; // In milliseconds
-        let startTime = 0;
         let running = false;
 
         function setCookie(name, value, days) {
@@ -159,7 +158,7 @@
         function startStopwatch() {
             if (!timer) {
                 const currentTime = Date.now();
-                startTime = currentTime - elapsedTime;
+                const startTime = currentTime - elapsedTime;
                 timer = setInterval(() => {
                     elapsedTime = Date.now() - startTime;
                     document.getElementById('display').textContent = formatTime(elapsedTime);
@@ -197,6 +196,7 @@
             }
             document.getElementById('additional-splits').innerHTML = ''; // Clear additional splits
             deleteCookie('splitTimes');
+            deleteCookie('presetDistances');
         }
 
         function recordSplit(index) {
@@ -223,85 +223,54 @@
             const projectedFinishFormatted = formatTime(projectedFinishTime);
             document.getElementById('projected-time-' + index).textContent = `Projected Finish: ${projectedFinishFormatted}`;
 
-            // Save splits in cookie
-            saveSplits();
+            // Save splits in cookies
+            const splitTimes = getCookie('splitTimes') ? JSON.parse(getCookie('splitTimes')) : {};
+            splitTimes[index] = { time: splitTimeFormatted, pace: milePaceFormatted, projected: projectedFinishFormatted };
+            setCookie('splitTimes', JSON.stringify(splitTimes), 1);
         }
 
-        function saveSplits() {
-            const splits = [];
-            for (let i = 1; i <= 5; i++) {
-                splits.push({
-                    time: document.getElementById('split-time-' + i).textContent,
-                    pace: document.getElementById('mile-pace-' + i).textContent,
-                    projected: document.getElementById('projected-time-' + i).textContent,
-                });
-            }
-            setCookie('splitTimes', JSON.stringify(splits), 1);
-        }
-
-        function loadSplits() {
-            const splits = JSON.parse(getCookie('splitTimes'));
-            if (splits) {
-                splits.forEach((split, index) => {
-                    if (index < 5) {
-                        document.getElementById('split-time-' + (index + 1)).textContent = split.time;
-                        document.getElementById('mile-pace-' + (index + 1)).textContent = split.pace;
-                        document.getElementById('projected-time-' + (index + 1)).textContent = split.projected;
-                    }
-                });
-            }
-        }
-
-        function loadElapsedTime() {
-            const savedTime = getCookie('elapsedTime');
-            if (savedTime) {
-                elapsedTime = parseInt(savedTime);
-                document.getElementById('display').textContent = formatTime(elapsedTime);
-                const isRunning = getCookie('running') === 'true';
-                if (isRunning) {
-                    startStopwatch();
-                }
-            }
-        }
-
-        function setPreset(type) {
+        function setPreset(preset) {
             const distances = {
                 '800M': [200, 400, 600, 800],
-                '1600M': [200, 600, 1000, 1400, 1600],
-                '3200M': [200, 600, 1000, 1400, 1800, 2200, 2600, 3000, 3200],
-                '5k': [1600, 2400, 3200, 4000, 5000],
-            }[type];
+                '1600M': [400, 800, 1200, 1600],
+                '3200M': [600, 1200, 1600, 2400, 3000, 3200],
+                '5K': [1000, 2000, 3000, 4000, 5000]
+            };
 
-            // Clear existing input fields
-            clearSplits();
-
-            // Set new input fields based on selected preset
-            for (let i = 0; i < distances.length; i++) {
-                if (i < 5) {
-                    document.getElementById('split-' + (i + 1)).value = distances[i];
-                } else {
-                    const splitRow = document.createElement('div');
-                    splitRow.className = 'split-row';
-                    splitRow.innerHTML = `
-                        <label>Distance ${i + 1}: </label>
-                        <input type="number" id="split-${i + 1}" placeholder="<Enter>" value="${distances[i]}">
-                        <button onclick="recordSplit(${i + 1})">Split</button>
-                        <span class="split-result" id="split-time-${i + 1}"></span>
-                        <span class="mile-pace" id="mile-pace-${i + 1}"></span>
-                        <span class="projected" id="projected-time-${i + 1}"></span>
-                    `;
-                    document.getElementById('additional-splits').appendChild(splitRow);
+            if (distances[preset]) {
+                const distanceValues = distances[preset];
+                for (let i = 0; i < distanceValues.length; i++) {
+                    document.getElementById('split-' + (i + 1)).value = distanceValues[i];
                 }
+                setCookie('presetDistances', JSON.stringify(distanceValues), 1);
             }
-            // Set race length based on preset
-            document.getElementById('race-length').value = distances[distances.length - 1];
         }
 
-        // Load previous state on page load
-        window.onload = function() {
-            loadElapsedTime();
-            loadSplits();
+        function loadPresets() {
+            const presetDistances = JSON.parse(getCookie('presetDistances'));
+            if (presetDistances) {
+                presetDistances.forEach((distance, index) => {
+                    document.getElementById('split-' + (index + 1)).value = distance;
+                });
+            }
         }
+
+        function loadStopwatch() {
+            const savedElapsedTime = getCookie('elapsedTime');
+            const savedRunning = getCookie('running');
+            if (savedElapsedTime) {
+                elapsedTime = parseInt(savedElapsedTime, 10);
+                document.getElementById('display').textContent = formatTime(elapsedTime);
+            }
+            if (savedRunning === 'true') {
+                startStopwatch();
+            }
+        }
+
+        window.onload = function() {
+            loadPresets();
+            loadStopwatch();
+        };
     </script>
 </body>
 </html>
