@@ -58,8 +58,8 @@
         <div class="preset-buttons">
             <button onclick="setPreset('800M')">800M</button>
             <button onclick="setPreset('1600M')">1600M</button>
-            <button onclick="setPreset('5k')">5K</button>
             <button onclick="setPreset('3200M')">3200M</button>
+            <button onclick="setPreset('5k')">5K</button>
         </div>
         <div style="margin-top: 20px;">
             <label for="race-length">Race Length: </label>
@@ -163,6 +163,16 @@
             stopStopwatch();
             elapsedTime = 0;
             document.getElementById('display').textContent = '00:00:00.00';
+            clearSplits();
+        }
+
+        function clearSplits() {
+            for (let i = 1; i <= 5; i++) {
+                document.getElementById('split-time-' + i).textContent = '';
+                document.getElementById('mile-pace-' + i).textContent = '';
+                document.getElementById('projected-time-' + i).textContent = '';
+            }
+            document.getElementById('additional-splits').innerHTML = ''; // Clear additional splits
         }
 
         function recordSplit(index) {
@@ -199,30 +209,28 @@
             };
 
             const distances = splits[type] || [];
-            document.getElementById('race-length').value = distances[distances.length - 1] || '';
+            document.getElementById('race-length').value = distances[distances.length - 1];
 
-            for (let i = 1; i <= 5; i++) {
-                document.getElementById('split-' + i).value = distances[i - 1] || '';
-            }
+            // Clear existing input fields
+            clearSplits();
 
-            if (type === '3200M') {
-                const additionalSplits = document.getElementById('additional-splits');
-                additionalSplits.innerHTML = ''; // Clear previous rows
-                for (let i = 5; i < distances.length; i++) {
+            // Set new input fields based on selected preset
+            for (let i = 0; i < distances.length; i++) {
+                if (i < 5) {
+                    document.getElementById('split-' + (i + 1)).value = distances[i];
+                } else {
                     const splitRow = document.createElement('div');
                     splitRow.className = 'split-row';
                     splitRow.innerHTML = `
                         <label>Distance ${i + 1}: </label>
-                        <input type="number" id="split-${i + 1}" placeholder="<Enter>">
+                        <input type="number" id="split-${i + 1}" placeholder="<Enter>" value="${distances[i]}">
                         <button onclick="recordSplit(${i + 1})">Split</button>
                         <span class="split-result" id="split-time-${i + 1}"></span>
                         <span class="mile-pace" id="mile-pace-${i + 1}"></span>
                         <span class="projected" id="projected-time-${i + 1}"></span>
                     `;
-                    additionalSplits.appendChild(splitRow);
+                    document.getElementById('additional-splits').appendChild(splitRow);
                 }
-            } else {
-                document.getElementById('additional-splits').innerHTML = ''; // Clear additional splits for other presets
             }
         }
     </script>
