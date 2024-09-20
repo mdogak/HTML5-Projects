@@ -74,47 +74,7 @@
     </div>
 	
     <div style="margin-top: 30px;" id="split-container">
-        <div class="split-row">
-            <label>Distance 1: </label>
-            <input type="number" id="split-1" placeholder="<Enter>">
-            <button onclick="recordSplit(1)">Split</button>
-            <span class="split-result" id="split-time-1"></span>
-            <span class="mile-pace" id="mile-pace-1"></span>
-            <span class="projected" id="projected-time-1"></span>
-        </div>
-        <div class="split-row">
-            <label>Distance 2: </label>
-            <input type="number" id="split-2" placeholder="<Enter>">
-            <button onclick="recordSplit(2)">Split</button>
-            <span class="split-result" id="split-time-2"></span>
-            <span class="mile-pace" id="mile-pace-2"></span>
-            <span class="projected" id="projected-time-2"></span>
-        </div>
-        <div class="split-row">
-            <label>Distance 3: </label>
-            <input type="number" id="split-3" placeholder="<Enter>">
-            <button onclick="recordSplit(3)">Split</button>
-            <span class="split-result" id="split-time-3"></span>
-            <span class="mile-pace" id="mile-pace-3"></span>
-            <span class="projected" id="projected-time-3"></span>
-        </div>
-        <div class="split-row">
-            <label>Distance 4: </label>
-            <input type="number" id="split-4" placeholder="<Enter>">
-            <button onclick="recordSplit(4)">Split</button>
-            <span class="split-result" id="split-time-4"></span>
-            <span class="mile-pace" id="mile-pace-4"></span>
-            <span class="projected" id="projected-time-4"></span>
-        </div>
-        <div class="split-row">
-            <label>Distance 5: </label>
-            <input type="number" id="split-5" placeholder="<Enter>">
-            <button onclick="recordSplit(5)">Split</button>
-            <span class="split-result" id="split-time-5"></span>
-            <span class="mile-pace" id="mile-pace-5"></span>
-            <span class="projected" id="projected-time-5"></span>
-        </div>
-        <div class="split-row" id="additional-splits"></div>
+        <div id="split-rows"></div>
     </div>
 
     <script>
@@ -188,15 +148,15 @@
         }
 
         function clearSplits() {
-            for (let i = 1; i <= 5; i++) {
+            for (let i = 1; i <= 9; i++) {
                 document.getElementById('split-time-' + i).textContent = '';
                 document.getElementById('mile-pace-' + i).textContent = '';
                 document.getElementById('projected-time-' + i).textContent = '';
-                document.getElementById('split-' + i).value = '';
+                if (document.getElementById('split-' + i)) {
+                    document.getElementById('split-' + i).value = '';
+                }
             }
-            document.getElementById('additional-splits').innerHTML = ''; // Clear additional splits
             deleteCookie('splitTimes');
-            deleteCookie('presetDistances');
         }
 
         function recordSplit(index) {
@@ -231,16 +191,29 @@
 
         function setPreset(preset) {
             const distances = {
-                '800M': [200, 400, 600, 800],
-                '1600M': [400, 800, 1200, 1600],
-                '3200M': [600, 1200, 1600, 2400, 3000, 3200],
+                '800M': [200, 400],
+                '1600M': [200, 600, 1000, 1400, 1600],
+                '3200M': [200, 600, 1000, 1400, 1800, 2200, 2600, 3000, 3200],
                 '5K': [1000, 2000, 3000, 4000, 5000]
             };
 
             if (distances[preset]) {
                 const distanceValues = distances[preset];
+                document.getElementById('race-length').value = distanceValues[distanceValues.length - 1]; // Set race length to last distance
                 for (let i = 0; i < distanceValues.length; i++) {
-                    document.getElementById('split-' + (i + 1)).value = distanceValues[i];
+                    if (i < 9) {
+                        const splitRow = document.createElement('div');
+                        splitRow.className = 'split-row';
+                        splitRow.innerHTML = `
+                            <label>Distance ${i + 1}: </label>
+                            <input type="number" id="split-${i + 1}" placeholder="<Enter>" value="${distanceValues[i]}">
+                            <button onclick="recordSplit(${i + 1})">Split</button>
+                            <span class="split-result" id="split-time-${i + 1}"></span>
+                            <span class="mile-pace" id="mile-pace-${i + 1}"></span>
+                            <span class="projected" id="projected-time-${i + 1}"></span>
+                        `;
+                        document.getElementById('split-rows').appendChild(splitRow);
+                    }
                 }
                 setCookie('presetDistances', JSON.stringify(distanceValues), 1);
             }
@@ -253,6 +226,10 @@
                     document.getElementById('split-' + (index + 1)).value = distance;
                 });
             }
+            const raceLength = getCookie('raceLength');
+            if (raceLength) {
+                document.getElementById('race-length').value = raceLength;
+            }
         }
 
         function loadStopwatch() {
@@ -264,6 +241,14 @@
             }
             if (savedRunning === 'true') {
                 startStopwatch();
+            }
+            const splitTimes = JSON.parse(getCookie('splitTimes'));
+            if (splitTimes) {
+                for (let index in splitTimes) {
+                    document.getElementById('split-time-' + index).textContent = `Time from Start: ${splitTimes[index].time}`;
+                    document.getElementById('mile-pace-' + index).textContent = `Mile Pace: ${splitTimes[index].pace}`;
+                    document.getElementById('projected-time-' + index).textContent = `Projected Finish: ${splitTimes[index].projected}`;
+                }
             }
         }
 
