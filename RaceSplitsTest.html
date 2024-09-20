@@ -74,12 +74,53 @@
     </div>
 	
     <div style="margin-top: 30px;" id="split-container">
-        <div id="split-rows"></div>
+        <div class="split-row">
+            <label>Distance 1: </label>
+            <input type="number" id="split-1" placeholder="<Enter>">
+            <button onclick="recordSplit(1)">Split</button>
+            <span class="split-result" id="split-time-1"></span>
+            <span class="mile-pace" id="mile-pace-1"></span>
+            <span class="projected" id="projected-time-1"></span>
+        </div>
+        <div class="split-row">
+            <label>Distance 2: </label>
+            <input type="number" id="split-2" placeholder="<Enter>">
+            <button onclick="recordSplit(2)">Split</button>
+            <span class="split-result" id="split-time-2"></span>
+            <span class="mile-pace" id="mile-pace-2"></span>
+            <span class="projected" id="projected-time-2"></span>
+        </div>
+        <div class="split-row">
+            <label>Distance 3: </label>
+            <input type="number" id="split-3" placeholder="<Enter>">
+            <button onclick="recordSplit(3)">Split</button>
+            <span class="split-result" id="split-time-3"></span>
+            <span class="mile-pace" id="mile-pace-3"></span>
+            <span class="projected" id="projected-time-3"></span>
+        </div>
+        <div class="split-row">
+            <label>Distance 4: </label>
+            <input type="number" id="split-4" placeholder="<Enter>">
+            <button onclick="recordSplit(4)">Split</button>
+            <span class="split-result" id="split-time-4"></span>
+            <span class="mile-pace" id="mile-pace-4"></span>
+            <span class="projected" id="projected-time-4"></span>
+        </div>
+        <div class="split-row">
+            <label>Distance 5: </label>
+            <input type="number" id="split-5" placeholder="<Enter>">
+            <button onclick="recordSplit(5)">Split</button>
+            <span class="split-result" id="split-time-5"></span>
+            <span class="mile-pace" id="mile-pace-5"></span>
+            <span class="projected" id="projected-time-5"></span>
+        </div>
+        <div class="split-row" id="additional-splits"></div>
     </div>
 
     <script>
         let timer;
         let elapsedTime = 0; // In milliseconds
+        let startTime = 0;
         let running = false;
 
         function setCookie(name, value, days) {
@@ -118,7 +159,7 @@
         function startStopwatch() {
             if (!timer) {
                 const currentTime = Date.now();
-                const startTime = currentTime - elapsedTime;
+                startTime = currentTime - elapsedTime;
                 timer = setInterval(() => {
                     elapsedTime = Date.now() - startTime;
                     document.getElementById('display').textContent = formatTime(elapsedTime);
@@ -145,18 +186,18 @@
             clearSplits();
             deleteCookie('elapsedTime');
             deleteCookie('running');
+            deleteCookie('raceLength');
+            deleteCookie('splitTimes');
         }
 
         function clearSplits() {
-            for (let i = 1; i <= 9; i++) {
+            for (let i = 1; i <= 5; i++) {
                 document.getElementById('split-time-' + i).textContent = '';
                 document.getElementById('mile-pace-' + i).textContent = '';
                 document.getElementById('projected-time-' + i).textContent = '';
-                if (document.getElementById('split-' + i)) {
-                    document.getElementById('split-' + i).value = '';
-                }
+                document.getElementById('split-' + i).value = '';
             }
-            deleteCookie('splitTimes');
+            document.getElementById('additional-splits').innerHTML = ''; // Clear additional splits
         }
 
         function recordSplit(index) {
@@ -183,79 +224,96 @@
             const projectedFinishFormatted = formatTime(projectedFinishTime);
             document.getElementById('projected-time-' + index).textContent = `Projected Finish: ${projectedFinishFormatted}`;
 
-            // Save splits in cookies
-            const splitTimes = getCookie('splitTimes') ? JSON.parse(getCookie('splitTimes')) : {};
-            splitTimes[index] = { time: splitTimeFormatted, pace: milePaceFormatted, projected: projectedFinishFormatted };
-            setCookie('splitTimes', JSON.stringify(splitTimes), 1);
+            // Save splits in cookie
+            saveSplits();
         }
 
-        function setPreset(preset) {
-            const distances = {
-                '800M': [200, 400],
-                '1600M': [200, 600, 1000, 1400, 1600],
-                '3200M': [200, 600, 1000, 1400, 1800, 2200, 2600, 3000, 3200],
-                '5K': [1000, 2000, 3000, 4000, 5000]
-            };
-
-            if (distances[preset]) {
-                const distanceValues = distances[preset];
-                document.getElementById('race-length').value = distanceValues[distanceValues.length - 1]; // Set race length to last distance
-                for (let i = 0; i < distanceValues.length; i++) {
-                    if (i < 9) {
-                        const splitRow = document.createElement('div');
-                        splitRow.className = 'split-row';
-                        splitRow.innerHTML = `
-                            <label>Distance ${i + 1}: </label>
-                            <input type="number" id="split-${i + 1}" placeholder="<Enter>" value="${distanceValues[i]}">
-                            <button onclick="recordSplit(${i + 1})">Split</button>
-                            <span class="split-result" id="split-time-${i + 1}"></span>
-                            <span class="mile-pace" id="mile-pace-${i + 1}"></span>
-                            <span class="projected" id="projected-time-${i + 1}"></span>
-                        `;
-                        document.getElementById('split-rows').appendChild(splitRow);
-                    }
-                }
-                setCookie('presetDistances', JSON.stringify(distanceValues), 1);
-            }
-        }
-
-        function loadPresets() {
-            const presetDistances = JSON.parse(getCookie('presetDistances'));
-            if (presetDistances) {
-                presetDistances.forEach((distance, index) => {
-                    document.getElementById('split-' + (index + 1)).value = distance;
+        function saveSplits() {
+            const splits = [];
+            for (let i = 1; i <= 5; i++) {
+                splits.push({
+                    time: document.getElementById('split-time-' + i).textContent,
+                    pace: document.getElementById('mile-pace-' + i).textContent,
+                    projected: document.getElementById('projected-time-' + i).textContent,
                 });
             }
+            setCookie('splitTimes', JSON.stringify(splits), 1);
+        }
+
+        function loadSplits() {
+            const splits = JSON.parse(getCookie('splitTimes'));
+            if (splits) {
+                splits.forEach((split, index) => {
+                    if (index < 5) {
+                        document.getElementById('split-time-' + (index + 1)).textContent = split.time;
+                        document.getElementById('mile-pace-' + (index + 1)).textContent = split.pace;
+                        document.getElementById('projected-time-' + (index + 1)).textContent = split.projected;
+                    }
+                });
+            }
+        }
+
+        function loadElapsedTime() {
+            const savedTime = getCookie('elapsedTime');
+            if (savedTime) {
+                elapsedTime = parseInt(savedTime);
+                document.getElementById('display').textContent = formatTime(elapsedTime);
+                const isRunning = getCookie('running') === 'true';
+                if (isRunning) {
+                    startStopwatch();
+                }
+            }
+        }
+
+        function loadRaceLength() {
             const raceLength = getCookie('raceLength');
             if (raceLength) {
                 document.getElementById('race-length').value = raceLength;
             }
         }
 
-        function loadStopwatch() {
-            const savedElapsedTime = getCookie('elapsedTime');
-            const savedRunning = getCookie('running');
-            if (savedElapsedTime) {
-                elapsedTime = parseInt(savedElapsedTime, 10);
-                document.getElementById('display').textContent = formatTime(elapsedTime);
-            }
-            if (savedRunning === 'true') {
-                startStopwatch();
-            }
-            const splitTimes = JSON.parse(getCookie('splitTimes'));
-            if (splitTimes) {
-                for (let index in splitTimes) {
-                    document.getElementById('split-time-' + index).textContent = `Time from Start: ${splitTimes[index].time}`;
-                    document.getElementById('mile-pace-' + index).textContent = `Mile Pace: ${splitTimes[index].pace}`;
-                    document.getElementById('projected-time-' + index).textContent = `Projected Finish: ${splitTimes[index].projected}`;
+        function setPreset(type) {
+            const distances = {
+                '800M': [200, 400, 600, 800],
+                '1600M': [200, 600, 1000, 1400, 1600],
+                '3200M': [200, 600, 1000, 1400, 1800, 2200, 2600, 3000, 3200],
+                '5k': [1600, 2400, 3200, 4000, 5000],
+            }[type];
+
+            // Clear existing input fields
+            clearSplits();
+
+            // Set new input fields based on selected preset
+            for (let i = 0; i < distances.length; i++) {
+                if (i < 5) {
+                    document.getElementById('split-' + (i + 1)).value = distances[i];
+                } else {
+                    const splitRow = document.createElement('div');
+                    splitRow.className = 'split-row';
+                    splitRow.innerHTML = `
+                        <label>Distance ${i + 1}: </label>
+                        <input type="number" id="split-${i + 1}" placeholder="<Enter>" value="${distances[i]}">
+                        <button onclick="recordSplit(${i + 1})">Split</button>
+                        <span class="split-result" id="split-time-${i + 1}"></span>
+                        <span class="mile-pace" id="mile-pace-${i + 1}"></span>
+                        <span class="projected" id="projected-time-${i + 1}"></span>
+                    `;
+                    document.getElementById('additional-splits').appendChild(splitRow);
                 }
             }
+            // Set race length based on preset
+            document.getElementById('race-length').value = distances[distances.length - 1];
+
+            // Save race length in cookie
+            setCookie('raceLength', distances[distances.length - 1], 1);
         }
 
+        // Load previous state on page load
         window.onload = function() {
-            loadPresets();
-            loadStopwatch();
-        };
+            loadElapsedTime();
+            loadSplits();
+            loadRaceLength();
+        }
     </script>
 </body>
 </html>
