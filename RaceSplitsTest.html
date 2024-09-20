@@ -123,13 +123,11 @@
         let startTime = 0;
         let running = false;
 
-        // Function to set a cookie
         function setCookie(name, value, days) {
             const expires = new Date(Date.now() + days * 864e5).toUTCString();
             document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/';
         }
 
-        // Function to get a cookie
         function getCookie(name) {
             return document.cookie.split('; ').reduce((r, v) => {
                 const parts = v.split('=');
@@ -137,7 +135,6 @@
             }, '');
         }
 
-        // Function to delete a cookie
         function deleteCookie(name) {
             setCookie(name, '', -1);
         }
@@ -161,7 +158,8 @@
 
         function startStopwatch() {
             if (!timer) {
-                startTime = Date.now() - elapsedTime;
+                const currentTime = Date.now();
+                startTime = currentTime - elapsedTime;
                 timer = setInterval(() => {
                     elapsedTime = Date.now() - startTime;
                     document.getElementById('display').textContent = formatTime(elapsedTime);
@@ -256,6 +254,9 @@
             if (savedTime) {
                 elapsedTime = parseInt(savedTime);
                 document.getElementById('display').textContent = formatTime(elapsedTime);
+                if (running) {
+                    startStopwatch();
+                }
             }
         }
 
@@ -288,6 +289,8 @@
                     document.getElementById('additional-splits').appendChild(splitRow);
                 }
             }
+            // Set race length based on preset
+            document.getElementById('race-length').value = distances[distances.length - 1];
         }
 
         // Load previous state on page load
