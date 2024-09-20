@@ -166,6 +166,7 @@
                     setCookie('elapsedTime', elapsedTime, 1);
                 }, 10); // Updates every 10 milliseconds
                 running = true;
+                setCookie('running', true, 1);
                 document.getElementById('startStopBtn').textContent = 'Stop';
             }
         }
@@ -174,6 +175,7 @@
             clearInterval(timer);
             timer = null;
             running = false;
+            setCookie('running', false, 1);
             document.getElementById('startStopBtn').textContent = 'Start';
         }
 
@@ -183,6 +185,7 @@
             document.getElementById('display').textContent = '00:00:00.00';
             clearSplits();
             deleteCookie('elapsedTime');
+            deleteCookie('running');
         }
 
         function clearSplits() {
@@ -254,7 +257,8 @@
             if (savedTime) {
                 elapsedTime = parseInt(savedTime);
                 document.getElementById('display').textContent = formatTime(elapsedTime);
-                if (running) {
+                const isRunning = getCookie('running') === 'true';
+                if (isRunning) {
                     startStopwatch();
                 }
             }
