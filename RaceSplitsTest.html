@@ -123,6 +123,25 @@
         let startTime = 0;
         let running = false;
 
+        // Function to set a cookie
+        function setCookie(name, value, days) {
+            const expires = new Date(Date.now() + days * 864e5).toUTCString();
+            document.cookie = name + '=' + encodeURIComponent(value) + '; expires=' + expires + '; path=/';
+        }
+
+        // Function to get a cookie
+        function getCookie(name) {
+            return document.cookie.split('; ').reduce((r, v) => {
+                const parts = v.split('=');
+                return parts[0] === name ? decodeURIComponent(parts[1]) : r;
+            }, '');
+        }
+
+        // Function to delete a cookie
+        function deleteCookie(name) {
+            setCookie(name, '', -1);
+        }
+
         function formatTime(ms) {
             const totalSeconds = ms / 1000;
             const hrs = Math.floor(totalSeconds / 3600);
@@ -146,6 +165,7 @@
                 timer = setInterval(() => {
                     elapsedTime = Date.now() - startTime;
                     document.getElementById('display').textContent = formatTime(elapsedTime);
+                    setCookie('elapsedTime', elapsedTime, 1);
                 }, 10); // Updates every 10 milliseconds
                 running = true;
                 document.getElementById('startStopBtn').textContent = 'Stop';
@@ -164,6 +184,7 @@
             elapsedTime = 0;
             document.getElementById('display').textContent = '00:00:00.00';
             clearSplits();
+            deleteCookie('elapsedTime');
         }
 
         function clearSplits() {
@@ -171,8 +192,10 @@
                 document.getElementById('split-time-' + i).textContent = '';
                 document.getElementById('mile-pace-' + i).textContent = '';
                 document.getElementById('projected-time-' + i).textContent = '';
+                document.getElementById('split-' + i).value = '';
             }
             document.getElementById('additional-splits').innerHTML = ''; // Clear additional splits
+            deleteCookie('splitTimes');
         }
 
         function recordSplit(index) {
@@ -198,18 +221,51 @@
             const projectedFinishTime = (currentSplitTime * raceLength) / splitDistance;
             const projectedFinishFormatted = formatTime(projectedFinishTime);
             document.getElementById('projected-time-' + index).textContent = `Projected Finish: ${projectedFinishFormatted}`;
+
+            // Save splits in cookie
+            saveSplits();
+        }
+
+        function saveSplits() {
+            const splits = [];
+            for (let i = 1; i <= 5; i++) {
+                splits.push({
+                    time: document.getElementById('split-time-' + i).textContent,
+                    pace: document.getElementById('mile-pace-' + i).textContent,
+                    projected: document.getElementById('projected-time-' + i).textContent,
+                });
+            }
+            setCookie('splitTimes', JSON.stringify(splits), 1);
+        }
+
+        function loadSplits() {
+            const splits = JSON.parse(getCookie('splitTimes'));
+            if (splits) {
+                splits.forEach((split, index) => {
+                    if (index < 5) {
+                        document.getElementById('split-time-' + (index + 1)).textContent = split.time;
+                        document.getElementById('mile-pace-' + (index + 1)).textContent = split.pace;
+                        document.getElementById('projected-time-' + (index + 1)).textContent = split.projected;
+                    }
+                });
+            }
+        }
+
+        function loadElapsedTime() {
+            const savedTime = getCookie('elapsedTime');
+            if (savedTime) {
+                elapsedTime = parseInt(savedTime);
+                document.getElementById('display').textContent = formatTime(elapsedTime);
+            }
         }
 
         function setPreset(type) {
-            const splits = {
+            const distances = {
                 '800M': [200, 400, 600, 800],
                 '1600M': [200, 600, 1000, 1400, 1600],
+                '3200M': [200, 600, 1000, 1400, 1800, 2200, 2600, 3000, 3200],
                 '5k': [1600, 2400, 3200, 4000, 5000],
-                '3200M': [200, 600, 1000, 1400, 1800, 2200, 2600, 3000, 3200]
-            };
-
-            const distances = splits[type] || [];
-            document.getElementById('race-length').value = distances[distances.length - 1];
+            }[type];
 
             // Clear existing input fields
             clearSplits();
@@ -232,6 +288,12 @@
                     document.getElementById('additional-splits').appendChild(splitRow);
                 }
             }
+        }
+
+        // Load previous state on page load
+        window.onload = function() {
+            loadElapsedTime();
+            loadSplits();
         }
     </script>
 </body>
