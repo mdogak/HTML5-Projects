@@ -188,6 +188,7 @@
             deleteCookie('running');
             deleteCookie('raceLength');
             deleteCookie('splitTimes');
+            deleteCookie('distances'); // Clear distances cookie
         }
 
         function clearSplits() {
@@ -238,6 +239,15 @@
                 });
             }
             setCookie('splitTimes', JSON.stringify(splits), 1);
+            saveDistances(); // Save distances after recording splits
+        }
+
+        function saveDistances() {
+            const distances = [];
+            for (let i = 1; i <= 5; i++) {
+                distances.push(document.getElementById('split-' + i).value);
+            }
+            setCookie('distances', JSON.stringify(distances), 1);
         }
 
         function loadSplits() {
@@ -248,6 +258,17 @@
                         document.getElementById('split-time-' + (index + 1)).textContent = split.time;
                         document.getElementById('mile-pace-' + (index + 1)).textContent = split.pace;
                         document.getElementById('projected-time-' + (index + 1)).textContent = split.projected;
+                    }
+                });
+            }
+        }
+
+        function loadDistances() {
+            const distances = JSON.parse(getCookie('distances'));
+            if (distances) {
+                distances.forEach((distance, index) => {
+                    if (index < 5) {
+                        document.getElementById('split-' + (index + 1)).value = distance;
                     }
                 });
             }
@@ -306,6 +327,7 @@
 
             // Save race length in cookie
             setCookie('raceLength', distances[distances.length - 1], 1);
+            saveDistances(); // Save distances to cookie
         }
 
         // Load previous state on page load
@@ -313,6 +335,7 @@
             loadElapsedTime();
             loadSplits();
             loadRaceLength();
+            loadDistances(); // Load distances on page load
         }
     </script>
 </body>
