@@ -1,0 +1,32 @@
+<div style="margin-top: 20px;">
+    <button id="startStopBtn" onclick="toggleStopwatch()">Start</button>
+    <button onclick="clearStopwatch()">Clear</button>
+</div>
+
+<!-- Take Picture Section -->
+<div style="margin-top: 20px; display: flex; justify-content: center; align-items: center;">
+    <button id="takePictureBtn">Take Picture</button>
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;" onchange="previewPicture(event)">
+    <img id="picturePreview" style="width: 100px; height: 100px; margin-left: 10px; display: none;" alt="Preview">
+</div>
+
+<script>
+    // Show file input when Take Picture button is clicked
+    document.getElementById('takePictureBtn').onclick = function() {
+        document.getElementById('cameraInput').click();
+    };
+
+    // Preview the selected picture
+    function previewPicture(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.getElementById('picturePreview');
+                img.src = e.target.result;
+                img.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+</script>
