@@ -15,37 +15,43 @@
     let canvas = document.getElementById('pictureCanvas');
     let context = canvas.getContext('2d');
 
-    // Start camera and take picture when the "Take Picture" button is clicked
-    document.getElementById('takePictureBtn').onclick = function() {
+    // Start the camera on page load
+    function startCamera() {
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
         .then(function(stream) {
             video.srcObject = stream;
-
-            // Take picture after 1 second to ensure video feed is active
-            setTimeout(() => {
-                // Set canvas dimensions to match video
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-
-                // Draw the current video frame onto the canvas
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                // Stop the video stream
-                let tracks = stream.getTracks();
-                tracks.forEach(track => track.stop());
-
-                // Automatically download the captured image
-                let imgData = canvas.toDataURL('image/png');
-                let downloadLink = document.createElement('a');
-                downloadLink.href = imgData;
-                downloadLink.download = 'captured-image.png';
-                downloadLink.click();  // Trigger the download
-
-            }, 1000); // Delay to allow camera feed to initialize properly
         })
         .catch(function(err) {
             console.error("Error accessing camera: " + err);
             alert("Unable to access camera. Please ensure you have granted camera permissions.");
         });
+    }
+
+    // Function to capture and download picture
+    function takePicture() {
+        // Set canvas dimensions to match video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Draw the current video frame onto the canvas
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Create a unique filename using the current timestamp
+        let timestamp = Date.now();
+        let imgData = canvas.toDataURL('image/png');
+        let downloadLink = document.createElement('a');
+        downloadLink.href = imgData;
+        downloadLink.download = `captured-image-${timestamp}.png`;
+
+        // Trigger the download
+        downloadLink.click();
+    }
+
+    // Event listener for the "Take Picture" button
+    document.getElementById('takePictureBtn').onclick = function() {
+        takePicture();
     };
+
+    // Start the camera preview on page load
+    window.onload = startCamera;
 </script>
