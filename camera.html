@@ -1,10 +1,4 @@
 <div style="margin-top: 20px;">
-    <button id="startStopBtn" onclick="toggleStopwatch()">Start</button>
-    <button onclick="clearStopwatch()">Clear</button>
-</div>
-
-<!-- Take Picture Section -->
-<div style="margin-top: 20px;">
     <button id="takePictureBtn">Take Picture</button>
 </div>
 
@@ -12,7 +6,7 @@
     <!-- Video feed for camera preview -->
     <video id="cameraPreview" autoplay playsinline style="width: 200px; height: 150px; border: 1px solid #000;"></video>
 
-    <!-- Canvas for captured image preview -->
+    <!-- Canvas for captured image -->
     <canvas id="pictureCanvas" style="display: none;"></canvas>
 </div>
 
@@ -21,42 +15,37 @@
     let canvas = document.getElementById('pictureCanvas');
     let context = canvas.getContext('2d');
 
-    // Start camera when the "Take Picture" button is clicked
+    // Start camera and take picture when the "Take Picture" button is clicked
     document.getElementById('takePictureBtn').onclick = function() {
-        // Check if camera access is allowed
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
         .then(function(stream) {
-            // Display the video feed in the video element
             video.srcObject = stream;
+
+            // Take picture after 1 second to ensure video feed is active
+            setTimeout(() => {
+                // Set canvas dimensions to match video
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                // Draw the current video frame onto the canvas
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // Stop the video stream
+                let tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+
+                // Automatically download the captured image
+                let imgData = canvas.toDataURL('image/png');
+                let downloadLink = document.createElement('a');
+                downloadLink.href = imgData;
+                downloadLink.download = 'captured-image.png';
+                downloadLink.click();  // Trigger the download
+
+            }, 1000); // Delay to allow camera feed to initialize properly
         })
         .catch(function(err) {
             console.error("Error accessing camera: " + err);
             alert("Unable to access camera. Please ensure you have granted camera permissions.");
         });
-    };
-
-    // Capture still image from video feed
-    video.onclick = function() {
-        // Set canvas dimensions to match video
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-
-        // Draw current video frame onto the canvas
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // Stop the video stream after the picture is taken
-        let stream = video.srcObject;
-        let tracks = stream.getTracks();
-        tracks.forEach(track => track.stop());
-
-        // Display the captured image
-        let img = canvas.toDataURL('image/png');
-        let picturePreview = new Image();
-        picturePreview.src = img;
-        picturePreview.style.width = '200px';
-        picturePreview.style.height = '150px';
-
-        // Replace the video feed with the captured image
-        video.replaceWith(picturePreview);
     };
 </script>
