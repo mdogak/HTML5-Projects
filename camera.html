@@ -1,125 +1,149 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google Photos Upload with Timer</title>
-    <!-- Load Google Platform Library -->
-    <script src="https://apis.google.com/js/platform.js" async defer></script>
-    <!-- Google Sign-In Meta -->
-    <meta name="google-signin-client_id" content="YOUR_CLIENT_ID.apps.googleusercontent.com">
+    <title>Stopwatch with Split Times and Google Photos Upload</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        .time-display {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+        button {
+            font-size: 1.2em;
+            padding: 10px 15px;
+            margin: 10px;
+        }
+        input {
+            padding: 5px;
+            font-size: 1.1em;
+            width: 80px;
+        }
+    </style>
+    <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
-    <!-- Google Sign-In Button -->
-    <div class="g-signin2" data-onsuccess="onSignIn"></div>
-    <br>
-    
-    <!-- Camera Input -->
-    <input type="file" accept="image/*" id="cameraInput" capture="environment" style="display:none;" onchange="handleFileSelect(event)">
-    <button onclick="document.getElementById('cameraInput').click();">Take Photo</button>
-    
-    <!-- Timer UI -->
-    <h1 id="timer">00:00:00</h1>
-    <button onclick="startStopwatch()">Start Timer</button>
-    <button onclick="stopStopwatch()">Stop Timer</button>
+
+    <div class="time-display" id="display">00:00:00.0</div>
+    <button id="startStopBtn" onclick="toggleStopwatch()">Start</button>
+    <button onclick="clearStopwatch()">Clear</button>
+
+    <div>
+        <button onclick="takeSplit()">Split and Take Picture</button>
+    </div>
 
     <script>
-        let stopwatchInterval;
-        let startTime;
-        
-        // Google Sign-In: Handle successful sign-in
-        function onSignIn(googleUser) {
-            const authResponse = googleUser.getAuthResponse();
-            const accessToken = authResponse.access_token;
-            gapi.auth.setToken({ access_token: accessToken });
-            console.log('User signed in with token:', accessToken);
-        }
+        let timer;
+        let elapsedTime = 0;
+        let running = false;
+        const CLIENT_ID = '379635364176-fs8dr6f5414taqj59v5u82it4kvn82u1.apps.googleusercontent.com';
+        const SCOPES = 'https://www.googleapis.com/auth/photoslibrary.appendonly';
 
-        // Function to start the timer
-        function startStopwatch() {
-            startTime = Date.now();
-            stopwatchInterval = setInterval(updateStopwatch, 100);
-        }
-
-        // Function to stop the timer
-        function stopStopwatch() {
-            clearInterval(stopwatchInterval);
-        }
-
-        // Function to update the stopwatch display
-        function updateStopwatch() {
-            const currentTime = Date.now();
-            const elapsedTime = currentTime - startTime;
-            const seconds = Math.floor((elapsedTime / 1000) % 60);
-            const minutes = Math.floor((elapsedTime / (1000 * 60)) % 60);
-            const hours = Math.floor((elapsedTime / (1000 * 60 * 60)) % 24);
-
-            document.getElementById('timer').innerText = 
-                String(hours).padStart(2, '0') + ':' + 
-                String(minutes).padStart(2, '0') + ':' + 
-                String(seconds).padStart(2, '0');
-        }
-
-        // Function to handle file selection and upload to Google Photos
-        function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (file) {
-                uploadToGooglePhotos(file);
+        function toggleStopwatch() {
+            if (running) {
+                stopStopwatch();
+            } else {
+                startStopwatch();
             }
         }
 
-        // Function to upload the file to Google Photos
-        function uploadToGooglePhotos(file) {
-            const uploadUrl = 'https://photoslibrary.googleapis.com/v1/uploads';
-
-            fetch(uploadUrl, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${gapi.auth.getToken().access_token}`,
-                    'Content-Type': 'application/octet-stream',
-                    'X-Goog-Upload-File-Name': file.name,
-                    'X-Goog-Upload-Protocol': 'raw',
-                },
-                body: file,
-            })
-            .then(response => response.text())
-            .then(uploadToken => {
-                console.log('Upload token:', uploadToken);
-                // Now that we have the uploadToken, add it to the user's library
-                addToLibrary(uploadToken);
-            })
-            .catch(error => console.error('Upload failed', error));
+        function startStopwatch() {
+            if (!timer) {
+                const startTime = Date.now() - elapsedTime;
+                timer = setInterval(() => {
+                    elapsedTime = Date.now() - startTime;
+                    document.getElementById('display').textContent = formatTime(elapsedTime);
+                }, 100); // Updates every 100 milliseconds
+                running = true;
+                document.getElementById('startStopBtn').textContent = 'Stop';
+            }
         }
 
-        // Function to add the uploaded file to the user's Google Photos library
-        function addToLibrary(uploadToken) {
-            const addPhotoUrl = 'https://photoslibrary.googleapis.com/v1/mediaItems:batchCreate';
-            const requestBody = {
-                newMediaItems: [
-                    {
-                        simpleMediaItem: {
-                            uploadToken: uploadToken,
-                        },
-                    },
-                ],
+        function stopStopwatch() {
+            clearInterval(timer);
+            timer = null;
+            running = false;
+            document.getElementById('startStopBtn').textContent = 'Start';
+        }
+
+        function clearStopwatch() {
+            stopStopwatch();
+            elapsedTime = 0;
+            document.getElementById('display').textContent = '00:00:00.0';
+        }
+
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hrs = Math.floor(totalSeconds / 3600);
+            const mins = Math.floor((totalSeconds % 3600) / 60);
+            const secs = (totalSeconds % 60).toFixed(1);
+            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(4, '0')}`;
+        }
+
+        function takeSplit() {
+            // Function to capture a photo and upload it
+            const photo = document.createElement('input');
+            photo.type = 'file';
+            photo.accept = 'image/*';
+            photo.onchange = function (event) {
+                const file = event.target.files[0];
+                if (file) {
+                    uploadToGooglePhotos(file);
+                }
             };
-
-            fetch(addPhotoUrl, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${gapi.auth.getToken().access_token}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(requestBody),
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Added to library:', data);
-            })
-            .catch(error => console.error('Error adding to library', error));
+            photo.click();
         }
 
+        function handleClientLoad() {
+            gapi.load('client:auth2', initClient);
+        }
+
+        function initClient() {
+            gapi.client.init({
+                clientId: CLIENT_ID,
+                scope: SCOPES
+            }).then(() => {
+                console.log("GAPI client initialized.");
+            }).catch(error => {
+                console.error("Error initializing GAPI client: ", error);
+            });
+        }
+
+        function uploadToGooglePhotos(file) {
+            gapi.auth2.getAuthInstance().signIn().then(() => {
+                const accessToken = gapi.auth.getToken().access_token;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                fetch('https://photoslibrary.googleapis.com/v1/uploads', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + accessToken,
+                        'Content-Type': 'application/octet-stream'
+                    },
+                    body: file
+                }).then(response => {
+                    if (response.ok) {
+                        console.log("Photo uploaded successfully.");
+                    } else {
+                        console.error("Error uploading photo: ", response.statusText);
+                    }
+                }).catch(error => {
+                    console.error("Fetch error: ", error);
+                });
+            });
+        }
+
+        // Load the API client and auth2 library
+        window.onload = function() {
+            handleClientLoad();
+        }
     </script>
 </body>
 </html>
