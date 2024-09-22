@@ -3,149 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stopwatch with Split Times and Google Photos Upload</title>
+    <title>Take Picture App</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 20px;
+        video, canvas {
+            display: block;
+            margin: 20px auto;
         }
-        .time-display {
-            font-size: 3em;
-            margin-bottom: 20px;
-        }
-        button {
-            font-size: 1.2em;
-            padding: 10px 15px;
+        #gallery img {
+            height: 100px;
             margin: 10px;
         }
-        input {
-            padding: 5px;
-            font-size: 1.1em;
-            width: 80px;
-        }
     </style>
-    <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
 
-    <div class="time-display" id="display">00:00:00.0</div>
-    <button id="startStopBtn" onclick="toggleStopwatch()">Start</button>
-    <button onclick="clearStopwatch()">Clear</button>
-    <button id="loginBtn" onclick="handleAuthClick()">Login to Google Photos</button>
-    <div>
-        <button onclick="takeSplit()">Split and Take Picture</button>
-    </div>
+    <h1>Take Picture</h1>
+    <video id="video" width="320" height="240" autoplay></video>
+    <button id="takePictureButton">Take Picture</button>
+    <canvas id="canvas" width="320" height="240" style="display: none;"></canvas>
+    <div id="gallery"></div>
 
     <script>
-        let timer;
-        let elapsedTime = 0;
-        let running = false;
-        const CLIENT_ID = '379635364176-fs8dr6f5414taqj59v5u82it4kvn82u1.apps.googleusercontent.com';
-        const SCOPES = 'https://www.googleapis.com/auth/photoslibrary.appendonly';
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const gallery = document.getElementById('gallery');
+        const takePictureButton = document.getElementById('takePictureButton');
+        const context = canvas.getContext('2d');
 
-        function toggleStopwatch() {
-            if (running) {
-                stopStopwatch();
-            } else {
-                startStopwatch();
-            }
-        }
-
-        function startStopwatch() {
-            if (!timer) {
-                const startTime = Date.now() - elapsedTime;
-                timer = setInterval(() => {
-                    elapsedTime = Date.now() - startTime;
-                    document.getElementById('display').textContent = formatTime(elapsedTime);
-                }, 100); // Updates every 100 milliseconds
-                running = true;
-                document.getElementById('startStopBtn').textContent = 'Stop';
-            }
-        }
-
-        function stopStopwatch() {
-            clearInterval(timer);
-            timer = null;
-            running = false;
-            document.getElementById('startStopBtn').textContent = 'Start';
-        }
-
-        function clearStopwatch() {
-            stopStopwatch();
-            elapsedTime = 0;
-            document.getElementById('display').textContent = '00:00:00.0';
-        }
-
-        function formatTime(ms) {
-            const totalSeconds = Math.floor(ms / 1000);
-            const hrs = Math.floor(totalSeconds / 3600);
-            const mins = Math.floor((totalSeconds % 3600) / 60);
-            const secs = (totalSeconds % 60).toFixed(1);
-            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(4, '0')}`;
-        }
-
-        function handleAuthClick() {
-            gapi.auth2.getAuthInstance().signIn();
-        }
-
-        function handleClientLoad() {
-            gapi.load('client:auth2', initClient);
-        }
-
-        function initClient() {
-            gapi.client.init({
-                clientId: CLIENT_ID,
-                scope: SCOPES
-            }).then(() => {
-                console.log("GAPI client initialized.");
-            }).catch(error => {
-                console.error("Error initializing GAPI client: ", error);
+        // Access the user's camera
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error('Error accessing the camera: ', err);
             });
-        }
 
-        function takeSplit() {
-            const photoInput = document.createElement('input');
-            photoInput.type = 'file';
-            photoInput.accept = 'image/*';
-            photoInput.onchange = function (event) {
-                const file = event.target.files[0];
-                if (file) {
-                    uploadToGooglePhotos(file);
-                }
-            };
-            photoInput.click();
-        }
+        // Capture the picture on button click
+        takePictureButton.addEventListener('click', () => {
+            // Draw the video frame to the canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        function uploadToGooglePhotos(file) {
-            gapi.auth2.getAuthInstance().signIn().then(() => {
-                const accessToken = gapi.auth.getToken().access_token;
+            // Convert the canvas to a data URL (image)
+            const imageData = canvas.toDataURL('image/png');
 
-                const formData = new FormData();
-                formData.append('file', file);
+            // Create an image element and set its source to the image data
+            const img = document.createElement('img');
+            img.src = imageData;
 
-                fetch('https://photoslibrary.googleapis.com/v1/uploads', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': 'Bearer ' + accessToken,
-                        'Content-Type': 'application/octet-stream'
-                    },
-                    body: file
-                }).then(response => {
-                    if (response.ok) {
-                        console.log("Photo uploaded successfully.");
-                    } else {
-                        console.error("Error uploading photo: ", response.statusText);
-                    }
-                }).catch(error => {
-                    console.error("Fetch error: ", error);
-                });
-            });
-        }
-
-        window.onload = function() {
-            handleClientLoad();
-        }
+            // Append the image to the gallery
+            gallery.appendChild(img);
+        });
     </script>
+
 </body>
 </html>
