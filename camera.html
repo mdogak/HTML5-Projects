@@ -1,57 +1,125 @@
-<div style="margin-top: 20px;">
-    <button id="takePictureBtn">Take Picture</button>
-</div>
 
-<div style="margin-top: 20px; display: flex; justify-content: center; align-items: center;">
-    <!-- Video feed for camera preview -->
-    <video id="cameraPreview" autoplay playsinline style="width: 200px; height: 150px; border: 1px solid #000;"></video>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Photos Upload with Timer</title>
+    <!-- Load Google Platform Library -->
+    <script src="https://apis.google.com/js/platform.js" async defer></script>
+    <!-- Google Sign-In Meta -->
+    <meta name="google-signin-client_id" content="YOUR_CLIENT_ID.apps.googleusercontent.com">
+</head>
+<body>
+    <!-- Google Sign-In Button -->
+    <div class="g-signin2" data-onsuccess="onSignIn"></div>
+    <br>
+    
+    <!-- Camera Input -->
+    <input type="file" accept="image/*" id="cameraInput" capture="environment" style="display:none;" onchange="handleFileSelect(event)">
+    <button onclick="document.getElementById('cameraInput').click();">Take Photo</button>
+    
+    <!-- Timer UI -->
+    <h1 id="timer">00:00:00</h1>
+    <button onclick="startStopwatch()">Start Timer</button>
+    <button onclick="stopStopwatch()">Stop Timer</button>
 
-    <!-- Canvas for captured image -->
-    <canvas id="pictureCanvas" style="display: none;"></canvas>
-</div>
+    <script>
+        let stopwatchInterval;
+        let startTime;
+        
+        // Google Sign-In: Handle successful sign-in
+        function onSignIn(googleUser) {
+            const authResponse = googleUser.getAuthResponse();
+            const accessToken = authResponse.access_token;
+            gapi.auth.setToken({ access_token: accessToken });
+            console.log('User signed in with token:', accessToken);
+        }
 
-<script>
-    let video = document.getElementById('cameraPreview');
-    let canvas = document.getElementById('pictureCanvas');
-    let context = canvas.getContext('2d');
+        // Function to start the timer
+        function startStopwatch() {
+            startTime = Date.now();
+            stopwatchInterval = setInterval(updateStopwatch, 100);
+        }
 
-    // Start the camera on page load
-    function startCamera() {
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then(function(stream) {
-            video.srcObject = stream;
-        })
-        .catch(function(err) {
-            console.error("Error accessing camera: " + err);
-            alert("Unable to access camera. Please ensure you have granted camera permissions.");
-        });
-    }
+        // Function to stop the timer
+        function stopStopwatch() {
+            clearInterval(stopwatchInterval);
+        }
 
-    // Function to capture and download picture
-    function takePicture() {
-        // Set canvas dimensions to match video
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        // Function to update the stopwatch display
+        function updateStopwatch() {
+            const currentTime = Date.now();
+            const elapsedTime = currentTime - startTime;
+            const seconds = Math.floor((elapsedTime / 1000) % 60);
+            const minutes = Math.floor((elapsedTime / (1000 * 60)) % 60);
+            const hours = Math.floor((elapsedTime / (1000 * 60 * 60)) % 24);
 
-        // Draw the current video frame onto the canvas
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            document.getElementById('timer').innerText = 
+                String(hours).padStart(2, '0') + ':' + 
+                String(minutes).padStart(2, '0') + ':' + 
+                String(seconds).padStart(2, '0');
+        }
 
-        // Create a unique filename using the current timestamp
-        let timestamp = Date.now();
-        let imgData = canvas.toDataURL('image/png');
-        let downloadLink = document.createElement('a');
-        downloadLink.href = imgData;
-        downloadLink.download = `captured-image-${timestamp}.png`;
+        // Function to handle file selection and upload to Google Photos
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                uploadToGooglePhotos(file);
+            }
+        }
 
-        // Trigger the download
-        downloadLink.click();
-    }
+        // Function to upload the file to Google Photos
+        function uploadToGooglePhotos(file) {
+            const uploadUrl = 'https://photoslibrary.googleapis.com/v1/uploads';
 
-    // Event listener for the "Take Picture" button
-    document.getElementById('takePictureBtn').onclick = function() {
-        takePicture();
-    };
+            fetch(uploadUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${gapi.auth.getToken().access_token}`,
+                    'Content-Type': 'application/octet-stream',
+                    'X-Goog-Upload-File-Name': file.name,
+                    'X-Goog-Upload-Protocol': 'raw',
+                },
+                body: file,
+            })
+            .then(response => response.text())
+            .then(uploadToken => {
+                console.log('Upload token:', uploadToken);
+                // Now that we have the uploadToken, add it to the user's library
+                addToLibrary(uploadToken);
+            })
+            .catch(error => console.error('Upload failed', error));
+        }
 
-    // Start the camera preview on page load
-    window.onload = startCamera;
-</script>
+        // Function to add the uploaded file to the user's Google Photos library
+        function addToLibrary(uploadToken) {
+            const addPhotoUrl = 'https://photoslibrary.googleapis.com/v1/mediaItems:batchCreate';
+            const requestBody = {
+                newMediaItems: [
+                    {
+                        simpleMediaItem: {
+                            uploadToken: uploadToken,
+                        },
+                    },
+                ],
+            };
+
+            fetch(addPhotoUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${gapi.auth.getToken().access_token}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody),
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Added to library:', data);
+            })
+            .catch(error => console.error('Error adding to library', error));
+        }
+
+    </script>
+</body>
+</html>
