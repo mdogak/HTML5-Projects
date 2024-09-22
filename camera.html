@@ -1,5 +1,4 @@
-
-<!DOCTYPE html>
+               <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -13,6 +12,12 @@
         #gallery img {
             height: 100px;
             margin: 10px;
+        }
+        #authorize_button {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            font-size: 16px;
         }
     </style>
 </head>
@@ -28,7 +33,7 @@
     <!-- Google Sign-In Button -->
     <button id="authorize_button" style="display: none;">Authorize Google Photos</button>
 
-    <!-- Google Photos Library API -->
+    <!-- Google API Library -->
     <script src="https://apis.google.com/js/platform.js" async defer></script>
 
     <script>
@@ -40,14 +45,16 @@
         const context = canvas.getContext('2d');
         const authorizeButton = document.getElementById('authorize_button');
 
-        // Access the user's camera
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-            })
-            .catch(err => {
-                console.error('Error accessing the camera: ', err);
-            });
+        // Access the user's back-facing camera
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { exact: "environment" } } // Use the back-facing camera
+        })
+        .then(stream => {
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            console.error('Error accessing the camera: ', err);
+        });
 
         // Capture the picture on button click
         takePictureButton.addEventListener('click', () => {
@@ -75,8 +82,8 @@
 
         function initClient() {
             gapi.client.init({
-                apiKey: 'AIzaSyArMvWqXHz0c-q_oOOwyU2KH-49lezKuek',
-                clientId: '379635364176-fs8dr6f5414taqj59v5u82it4kvn82u1.apps.googleusercontent.com',
+                apiKey: 'AIzaSyArMvWqXHz0c-q_oOOwyU2KH-49lezKuek', // Your API key
+                clientId: '379635364176-fs8dr6f5414taqj59v5u82it4kvn82u1.apps.googleusercontent.com', // Your OAuth Client ID
                 discoveryDocs: ["https://photoslibrary.googleapis.com/$discovery/rest?version=v1"],
                 scope: 'https://www.googleapis.com/auth/photoslibrary.appendonly'
             }).then(() => {
