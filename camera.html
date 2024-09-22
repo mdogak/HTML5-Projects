@@ -32,7 +32,7 @@
     <div class="time-display" id="display">00:00:00.0</div>
     <button id="startStopBtn" onclick="toggleStopwatch()">Start</button>
     <button onclick="clearStopwatch()">Clear</button>
-
+    <button id="loginBtn" onclick="handleAuthClick()">Login to Google Photos</button>
     <div>
         <button onclick="takeSplit()">Split and Take Picture</button>
     </div>
@@ -85,18 +85,8 @@
             return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(4, '0')}`;
         }
 
-        function takeSplit() {
-            // Function to capture a photo and upload it
-            const photo = document.createElement('input');
-            photo.type = 'file';
-            photo.accept = 'image/*';
-            photo.onchange = function (event) {
-                const file = event.target.files[0];
-                if (file) {
-                    uploadToGooglePhotos(file);
-                }
-            };
-            photo.click();
+        function handleAuthClick() {
+            gapi.auth2.getAuthInstance().signIn();
         }
 
         function handleClientLoad() {
@@ -112,6 +102,19 @@
             }).catch(error => {
                 console.error("Error initializing GAPI client: ", error);
             });
+        }
+
+        function takeSplit() {
+            const photoInput = document.createElement('input');
+            photoInput.type = 'file';
+            photoInput.accept = 'image/*';
+            photoInput.onchange = function (event) {
+                const file = event.target.files[0];
+                if (file) {
+                    uploadToGooglePhotos(file);
+                }
+            };
+            photoInput.click();
         }
 
         function uploadToGooglePhotos(file) {
@@ -140,7 +143,6 @@
             });
         }
 
-        // Load the API client and auth2 library
         window.onload = function() {
             handleClientLoad();
         }
