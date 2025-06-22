@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biking Interval Stopwatch</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Tone.js for audio chimes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        /* Custom CSS for flashing effect */
+        @keyframes flashing {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+        .flashing {
+            animation: flashing 1s infinite;
+        }
+
+        /* Basic styling for mobile portrait view */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #ffffff; /* White background */
+            color: #000000; /* Black text */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start; /* Align to top */
+            min-height: 100vh; /* Full viewport height */
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-x: hidden; /* Prevent horizontal scrolling */
+        }
+
+        /* Responsive adjustments for smaller screens */
+        @media (max-width: 640px) {
+            .stopwatch-display {
+                font-size: 3rem; /* Smaller font on mobile */
+            }
+            .buttons-container button {
+                padding: 10px 15px; /* Smaller padding on buttons */
+                font-size: 1rem;
+            }
+            .seconds-remaining {
+                font-size: 1.8rem;
+            }
+            .interval-list-item {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body class="selection:bg-green-300">
+    <div class="container mx-auto p-4 flex flex-col items-center w-full max-w-md">
+        <!-- Stopwatch Display -->
+        <div id="stopwatchDisplay" class="stopwatch-display text-7xl font-bold mb-8 text-center w-full">
+            00:00:00
+        </div>
+
+        <!-- Control Buttons -->
+        <div class="buttons-container flex justify-center space-x-4 mb-8 w-full">
+            <button id="startButton" class="px-6 py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                START
+            </button>
+            <button id="stopButton" class="px-6 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                STOP
+            </button>
+            <button id="resetButton" class="px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white font-bold rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105">
+                RESET
+            </button>
+        </div>
+
+        <!-- Seconds Remaining -->
+        <div id="secondsRemaining" class="seconds-remaining text-3xl font-semibold mb-8 text-center w-full">
+            0 Seconds Remaining
+        </div>
+
+        <!-- Interval List -->
+        <div id="intervalList" class="w-full bg-gray-100 p-4 rounded-lg shadow-inner">
+            <h2 class="text-xl font-bold mb-4 text-center">Intervals & Rests</h2>
+            <ul id="intervalItems">
+                <!-- Intervals will be dynamically loaded here -->
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const stopwatchDisplay = document.getElementById('stopwatchDisplay');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const resetButton = document.getElementById('resetButton');
+        const secondsRemainingDisplay = document.getElementById('secondsRemaining');
+        const intervalItemsList = document.getElementById('intervalItems');
+
+        // Audio context and synth for chimes
+        let chimeSynth;
+        let audioContextStarted = false; // Flag to track if audio context has been started
+
+        /**
+         * Initializes the Tone.js audio context and chime synth.
+         * This function should be called as a result of a user gesture.
+         */
+        async function initAudio() {
+            if (!audioContextStarted) {
+                try {
+                    await Tone.start();
+                    chimeSynth = new Tone.Synth().toDestination();
+                    audioContextStarted = true;
+                    console.log("Audio context started. Chime synth initialized.");
+                } catch (e) {
+                    console.error("Error starting Tone.js audio context:", e);
+                }
+            }
+        }
+
+        // Interval definitions
+        const intervals = [
+            { type: "Interval", duration: 10 },
+            { type: "Rest", duration: 20 },
+            { type: "Interval", duration: 20 },
+            { type: "Rest", duration: 40 },
+            { type: "Interval", duration: 30 },
+            { type: "Rest", duration: 60 },
+            { type: "Interval", duration: 40 },
+            { type: "Rest", duration: 80 },
+            { type: "Interval", duration: 50 },
+            { type: "Rest", duration: 100 },
+            { type: "Interval", duration: 60 },
+            { type: "Rest", duration: 120 },
+            { type: "Interval", duration: 90 },
+            { type: "Rest", duration: 180 },
+            { type: "Interval", duration: 120 },
+            { type: "Rest", duration: 240 },
+        ];
+
+        // State variables
+        let stopwatchStartTime = null; // Timestamp when stopwatch started (Date.now())
+        let stopwatchElapsedTime = 0;   // Elapsed time in milliseconds (when paused or reset)
+        let isRunning = false;          // True if stopwatch is running
+        let stopwatchAnimationId = null; // Animation frame ID for stopwatch update
+
+        let currentIntervalIndex = 0;   // Current interval being tracked
+        let intervalStartTime = null;   // Timestamp when current interval started (Date.now())
+        let intervalRemainingTime = 0;  // Remaining time in seconds for current interval
+        let completedIntervals = new Array(intervals.length).fill(false); // Track completed intervals
+        let intervalLoopId = null;      // setInterval ID for interval countdown
+
+        // --- Cookie Management Functions ---
+        /**
+         * Sets a cookie with a given name, value, and expiration days.
+         * @param {string} name - The name of the cookie.
+         * @param {string} value - The value to store.
+         * @param {number} days - Number of days until the cookie expires.
+         */
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + (value || "")  + expires + "; path=/";
+        }
+
+        /**
+         * Gets the value of a cookie by its name.
+         * @param {string} name - The name of the cookie to retrieve.
+         * @returns {string|null} The cookie's value or null if not found.
+         */
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+
+        /**
+         * Saves the current state to a cookie.
+         */
+        function saveStateToCookie() {
+            const state = {
+                stopwatchStartTime: stopwatchStartTime,
+                stopwatchElapsedTime: stopwatchElapsedTime,
+                isRunning: isRunning,
+                currentIntervalIndex: currentIntervalIndex,
+                intervalStartTime: intervalStartTime,
+                intervalRemainingTime: intervalRemainingTime,
+                completedIntervals: completedIntervals
+            };
+            setCookie("bikingStopwatchState", JSON.stringify(state), 7); // Store for 7 days
+        }
+
+        /**
+         * Loads the state from a cookie.
+         */
+        function loadStateFromCookie() {
+            const stateString = getCookie("bikingStopwatchState");
+            if (stateString) {
+                try {
+                    const state = JSON.parse(stateString);
+                    stopwatchStartTime = state.stopwatchStartTime;
+                    stopwatchElapsedTime = state.stopwatchElapsedTime;
+                    isRunning = state.isRunning;
+                    currentIntervalIndex = state.currentIntervalIndex;
+                    intervalStartTime = state.intervalStartTime;
+                    intervalRemainingTime = state.intervalRemainingTime;
+                    completedIntervals = state.completedIntervals || new Array(intervals.length).fill(false); // Ensure array is initialized
+                    console.log("State loaded from cookie:", state);
+                } catch (e) {
+                    console.error("Error parsing cookie state:", e);
+                    resetState(); // Reset if cookie is corrupted
+                }
+            } else {
+                resetState(); // Initialize if no cookie found
+            }
+        }
+
+        // --- Stopwatch Functions ---
+        /**
+         * Formats time in milliseconds into HH:MM:SS format.
+         * @param {number} ms - Time in milliseconds.
+         * @returns {string} Formatted time string.
+         */
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+
+            const pad = (num) => String(num).padStart(2, '0');
+            return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+        }
+
+        /**
+         * Updates the stopwatch display.
+         */
+        function updateStopwatchDisplay() {
+            if (isRunning) {
+                const currentTime = Date.now();
+                const currentElapsed = stopwatchElapsedTime + (currentTime - stopwatchStartTime);
+                stopwatchDisplay.textContent = formatTime(currentElapsed);
+                stopwatchAnimationId = requestAnimationFrame(updateStopwatchDisplay);
+            } else {
+                stopwatchDisplay.textContent = formatTime(stopwatchElapsedTime);
+            }
+        }
+
+        /**
+         * Starts the stopwatch.
+         */
+        async function startStopwatch() { // Added async keyword
+            if (!isRunning) {
+                await initAudio(); // Ensure audio context is started on user gesture
+                stopwatchStartTime = Date.now();
+                isRunning = true;
+                updateStopwatchDisplay();
+                startIntervalTimer(); // Start/resume interval timer
+                saveStateToCookie();
+            }
+        }
+
+        /**
+         * Stops/pauses the stopwatch.
+         */
+        function stopStopwatch() {
+            if (isRunning) {
+                const currentTime = Date.now();
+                stopwatchElapsedTime += (currentTime - stopwatchStartTime);
+                isRunning = false;
+                cancelAnimationFrame(stopwatchAnimationId);
+                clearInterval(intervalLoopId); // Pause interval timer
+                saveStateToCookie();
+            }
+        }
+
+        /**
+         * Resets the stopwatch and intervals.
+         */
+        function resetStopwatch() {
+            stopStopwatch(); // First stop if running
+            resetState();
+            updateStopwatchDisplay(); // Update stopwatch to 00:00:00
+            renderIntervals(); // Reset interval list display
+            secondsRemainingDisplay.textContent = "0 Seconds Remaining";
+            saveStateToCookie();
+        }
+
+        /**
+         * Resets all state variables to initial values.
+         */
+        function resetState() {
+            stopwatchStartTime = null;
+            stopwatchElapsedTime = 0;
+            isRunning = false;
+            cancelAnimationFrame(stopwatchAnimationId);
+            clearInterval(intervalLoopId);
+
+            currentIntervalIndex = 0;
+            intervalStartTime = null;
+            intervalRemainingTime = 0;
+            completedIntervals.fill(false);
+        }
+
+        // --- Interval Timer Functions ---
+        /**
+         * Plays a short chime sound.
+         */
+        function playChime() {
+            if (chimeSynth && audioContextStarted) { // Only play if synth is ready and context started
+                chimeSynth.triggerAttackRelease("C4", "8n"); // C4 note for an 8th note duration
+                console.log("Chime played.");
+            } else {
+                console.warn("Chime synth not initialized or audio context not started.");
+            }
+        }
+
+        /**
+         * Starts or resumes the interval timer.
+         */
+        function startIntervalTimer() {
+            // If the stopwatch is not running, do not start interval timer
+            if (!isRunning) return;
+
+            // Clear any existing interval loop to prevent multiple loops
+            if (intervalLoopId) {
+                clearInterval(intervalLoopId);
+            }
+
+            // Check if all intervals are completed (and restart if so)
+            if (currentIntervalIndex >= intervals.length) {
+                console.log("All intervals completed. Looping back to start.");
+                currentIntervalIndex = 0;
+                completedIntervals.fill(false);
+                // No need to reset stopwatch time, it continues
+            }
+
+            const current = intervals[currentIntervalIndex];
+            if (!current) {
+                // This should not happen if currentIntervalIndex is managed correctly
+                console.error("No current interval found at index:", currentIntervalIndex);
+                clearInterval(intervalLoopId);
+                return;
+            }
+
+            // If resuming from a pause, use existing intervalRemainingTime
+            // Otherwise, start a new interval from its full duration
+            if (intervalRemainingTime <= 0 || intervalStartTime === null) {
+                intervalRemainingTime = current.duration;
+                intervalStartTime = Date.now();
+                playChime(); // Play chime when a new interval/rest starts
+            } else {
+                // If resuming, adjust remaining time based on actual elapsed time since pause
+                const timePassedSincePause = Date.now() - intervalStartTime;
+                intervalRemainingTime = Math.max(0, current.duration - Math.floor(timePassedSincePause / 1000));
+            }
+
+
+            // Update display immediately
+            updateIntervalDisplay();
+            renderIntervals();
+
+            // Set up the interval countdown
+            intervalLoopId = setInterval(() => {
+                intervalRemainingTime--;
+                updateIntervalDisplay();
+
+                if (intervalRemainingTime <= 0) {
+                    completedIntervals[currentIntervalIndex] = true;
+                    currentIntervalIndex++; // Move to the next interval
+                    clearInterval(intervalLoopId); // Stop current interval loop
+
+                    // Check if all intervals completed and restart, or move to next
+                    if (currentIntervalIndex < intervals.length) {
+                        startIntervalTimer(); // Start the next interval
+                    } else {
+                        // All intervals done, loop back to the beginning
+                        console.log("All intervals completed for this cycle. Restarting from beginning.");
+                        currentIntervalIndex = 0;
+                        completedIntervals.fill(false); // Reset completion status for the next cycle
+                        startIntervalTimer(); // Start from the first interval again
+                    }
+                    saveStateToCookie();
+                }
+            }, 1000); // Update every second
+        }
+
+        /**
+         * Updates the "X Seconds Remaining" display.
+         */
+        function updateIntervalDisplay() {
+            secondsRemainingDisplay.textContent = `${intervalRemainingTime} Seconds Remaining`;
+            renderIntervals(); // Re-render the list to update highlights and checkmarks
+        }
+
+        // --- Render Interval List ---
+        /**
+         * Renders the list of intervals and rests, applying styling.
+         */
+        function renderIntervals() {
+            intervalItemsList.innerHTML = ''; // Clear existing list
+            intervals.forEach((item, index) => {
+                const listItem = document.createElement('li');
+                listItem.className = 'interval-list-item flex justify-between items-center py-2 px-3 mb-2 rounded-md transition-all duration-300 ease-in-out';
+
+                const typeText = `${item.type} ${index % (intervals.length / 2) + 1}:`; // Dynamic numbering
+                const durationText = `${item.duration} seconds`;
+
+                let statusText = '';
+                if (completedIntervals[index]) {
+                    // Completed: checkmark and black text
+                    listItem.classList.add('text-black');
+                    statusText = '<span class="text-green-600 ml-2">✔</span>';
+                } else if (index === currentIntervalIndex && isRunning) {
+                    // Current and running: bold, green, flashing
+                    listItem.classList.add('font-bold', 'text-green-700', 'flashing', 'bg-green-100');
+                } else {
+                    // Upcoming or paused: normal black text
+                    listItem.classList.add('text-black');
+                }
+
+                listItem.innerHTML = `
+                    <span class="flex-grow">${typeText}</span>
+                    <span class="text-right">${durationText}${statusText}</span>
+                `;
+                intervalItemsList.appendChild(listItem);
+            });
+        }
+
+        // --- Event Listeners ---
+        // Changed to use async function for startButton click
+        startButton.addEventListener('click', startStopwatch);
+        stopButton.addEventListener('click', stopStopwatch);
+        resetButton.addEventListener('click', resetStopwatch);
+
+        // --- Initialization on Load ---
+        window.onload = function() {
+            loadStateFromCookie();
+            renderIntervals(); // Initial render of the list
+
+            // If stopwatch was running when page reloaded, resume it
+            if (isRunning) {
+                // Adjust stopwatchStartTime to account for time passed during reload
+                // We need to re-calculate stopwatchStartTime based on elapsedTime and current time
+                stopwatchStartTime = Date.now() - stopwatchElapsedTime;
+
+                // Adjust intervalStartTime based on intervalRemainingTime
+                // This makes sure the interval timer picks up correctly from where it left off
+                const currentDuration = intervals[currentIntervalIndex] ? intervals[currentIntervalIndex].duration : 0;
+                intervalStartTime = Date.now() - ((currentDuration - intervalRemainingTime) * 1000);
+
+                updateStopwatchDisplay(); // Start the animation loop
+                startIntervalTimer();    // Resume the interval countdown
+            } else {
+                updateStopwatchDisplay(); // Just show the saved elapsed time
+                updateIntervalDisplay(); // Update seconds remaining based on loaded state
+            }
+        };
+    </script>
+</body>
+</html>
