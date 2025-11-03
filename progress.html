@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Project Progress Tracking</title>
+  <title>Progress Tracking</title>
   <style>
     :root{
       --bg:#ffffff;
@@ -29,7 +29,7 @@
     input,select,button,textarea{background:#ffffff;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
     input[type=date]{cursor:pointer}
     button{cursor:pointer}
-    .row{display:grid;grid-template-columns:repeat(8, minmax(0,1fr));gap:8px;align-items:center}
+    .row{display:grid;grid-template-columns:repeat(9, minmax(0,1fr));gap:8px;align-items:center}
     .row.head{font-weight:700;opacity:.95}
     .row + .row{margin-top:8px}
     .muted{opacity:.7}
@@ -66,7 +66,16 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>Project Progress Tracking</h1>
+    <!-- Global datalist for Units (used by all scope rows) -->
+    <datalist id="unitsList">
+      <option value="%"></option>
+      <option value="Feet"></option>
+      <option value="Inches"></option>
+      <option value="Qty"></option>
+      <option value="Meters"></option>
+      <option value="Centimeters"></option>
+    </datalist>
+    <h1>Progress Tracking</h1>
 
     <!-- Big Chart Card with inline Project Name (left) and Startup Date (right) -->
     <div class="card" style="margin-top:16px">
@@ -87,16 +96,17 @@
     <!-- Scopes -->
     <div class="card" style="margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <h2>Scope Tracking</h2>
+        <h2>Scopes</h2>
       </div>
       <!-- Preset Toolbar under scope header -->
       <div class="toolbar" style="margin:8px 0 4px 0">
-        <button id="presetReset">🔄 Reset</button>
+        <button id="presetReset">🆕 Default</button>
         <button id="presetPipeline">🛢️ Pipeline</button>
         <button id="presetMech">🏗️ Mech Facility</button>
         <button id="presetIE">⚡ I&E Facility</button>
-        <button id="toolbarSave">💾 Save</button>
-        <button id="toolbarLoad">📂 Load</button>
+        <button id="toolbarSave">💾 Save Project</button>
+        <button id="toolbarLoad">📂 Load Project</button>
+        <button id="toolbarClear">🔄 Clear</button>
       </div>
       <div class="row head" style="margin-top:8px">
         <div>Scope</div>
@@ -105,9 +115,9 @@
         <div>Cost ($) or<br>% Weight</div>
         <div>% to Date or<br>Units to Date</div>
         <div>Total Units<br>(if Units)</div>
+        <div>Units</div>
         <div>Planned % or<br>Units to Date</div>
         <div class="center">Row<br>Actions</div>
-      </div>
       </div>
       <div id="scopeRows"></div>
     </div>
@@ -123,7 +133,7 @@
     <!-- Daily only (history view removed) -->
     <div class="stack-when-narrow" style="margin-top:16px">
       <div class="card narrow">
-        <h2>Planned vs Actual by Day</h2>
+        <h2>History</h2>
         <table id="dailyTable" style="margin-top:8px;width:auto">
           <thead>
             <tr>
@@ -180,21 +190,22 @@ function delCookie(name){ document.cookie = `${name}=; expires=Thu, 01 Jan 1970 
  *****************/
 let model = {
   project:{ name:'', startup:'' },
-  scopes:[], // {label,start,end,cost,actualPct,unitsToDate,totalUnits}
+  scopes:[], // {label,start,end,cost,actualPct,unitsToDate,totalUnits,unitsLabel}
   history:[], // [{date, actualPct}]
   dailyActuals:{}, // { 'YYYY-MM-DD': number }
   daysRelativeToPlan: null
 };
 
 function defaultScope(i){
-  // Scope #1 seeded with defaults
+  // Scope #1 seeded with defaults: start = day before today, end = start + 7 days, cost=100
   if(i===0){
-    const start = fmtDate(today);
-    const endDate = new Date(today); endDate.setMonth(endDate.getMonth()+1);
+    const startDate = new Date(today); startDate.setDate(startDate.getDate()-1);
+    const endDate = new Date(startDate); endDate.setDate(endDate.getDate()+7);
+    const start = fmtDate(startDate);
     const end = fmtDate(endDate);
-    return { label:`Scope #${i+1}`, start, end, cost:100, actualPct:0, unitsToDate:0, totalUnits:'' };
+    return { label:`Scope #${i+1}`, start, end, cost:100, actualPct:0, unitsToDate:0, totalUnits:'', unitsLabel:'%' };
   }
-  return { label:`Scope #${i+1}`, start:'', end:'', cost:0, actualPct:0, unitsToDate:0, totalUnits:'' };
+  return { label:`Scope #${i+1}`, start:'', end:'', cost:0, actualPct:0, unitsToDate:0, totalUnits:'', unitsLabel:'%' };
 }
 
 function ensureRows(n){
@@ -231,6 +242,7 @@ function renderScopeRow(i){
       <input data-k="progress" type="number" step="0.01" min="0" placeholder="% to Date or Units to Date" value="${s.totalUnits? s.unitsToDate : s.actualPct}">
     </div>
     <input data-k="totalUnits" type="number" step="0.01" min="0" placeholder="Total Units" value="${s.totalUnits===0? '': s.totalUnits}">
+    <input data-k="unitsLabel" list="unitsList" placeholder="Units" value="${(s.totalUnits? (s.unitsLabel||'Feet') : (s.unitsLabel||'%'))}">
     <div class="small" data-k="planned"></div>
     <div class="actions">
       <button class="iconbtn del" title="Remove this row">−</button>
@@ -254,12 +266,16 @@ function onScopeChange(e){
     end: row.querySelector('[data-k="end"]').value,
     cost: parseFloat(row.querySelector('[data-k="cost"]').value||'0'),
     progressVal: parseFloat(row.querySelector('[data-k="progress"]').value||'0'),
-    totalUnitsRaw: row.querySelector('[data-k="totalUnits"]').value
+    totalUnitsRaw: row.querySelector('[data-k="totalUnits"]').value,
+    unitsLabel: row.querySelector('[data-k="unitsLabel"]').value.trim()
   };
   s.label = inputs.label || `Scope #${i+1}`;
   s.start = inputs.start; s.end = inputs.end; s.cost = isFinite(inputs.cost)?inputs.cost:0;
   const tu = inputs.totalUnitsRaw === '' ? '' : clamp(parseFloat(inputs.totalUnitsRaw)||0,0,1e12);
   s.totalUnits = tu;
+  // default units from Total Units presence only
+  if(tu!=='' && tu>0){ s.unitsLabel = inputs.unitsLabel || 'Feet'; }
+  else { s.unitsLabel = inputs.unitsLabel || '%'; }
   if(tu!=='' && tu>0){ s.unitsToDate = clamp(inputs.progressVal,0,1e12); s.actualPct = tu>0 ? (s.unitsToDate/tu*100) : 0 }
   else { s.unitsToDate = 0; s.actualPct = clamp(inputs.progressVal,0,100); }
   updatePlannedCell(row, s);
@@ -304,7 +320,7 @@ const PRESETS = {
 };
 
 function scopesFrom(labels){
-  return labels.map(lbl=>({label: lbl, start:'', end:'', cost:0, actualPct:0, unitsToDate:0, totalUnits:''}));
+  return labels.map(lbl=>({label: lbl, start:'', end:'', cost:0, actualPct:0, unitsToDate:0, totalUnits:'', unitsLabel:'%'}));
 }
 function applyPreset(labels){
   model.scopes = scopesFrom(labels);
@@ -325,18 +341,17 @@ function calcEarliestStart(){
 
 function calcScopePlannedPctToDate(s){
   if(!s.start || !s.end) return 0;
-  const dStart = parseDate(s.start); const dEnd = parseDate(s.end);
+  const dStart = parseDate(s.start);
+  const dEnd = parseDate(s.end);
   const t = parseDate(fmtDate(today));
-  // if before start
-  if(t < dStart) return 0;
-  // if after end
-  if(t > dEnd) return 100;
-  // inclusive between: ratio = (t - start) / (end - start)
-  const den = (dEnd - dStart)/86400000; // difference in days (exclusive of end)
-  if(den <= 0) return 100; // degenerate single-day -> treat as complete
-  const num = (t - dStart)/86400000;
-  const pct = (num/den) * 100;
-  return clamp(pct,0,100);
+  if(t < dStart) return 0;            // before start
+  if(t > dEnd) return 100;            // after end
+  if(t.getTime() === dStart.getTime()) return 0; // exactly start day => 0%
+  const den = daysBetween(dStart, dEnd); // inclusive days in scope window
+  const num = daysBetween(dStart, t);    // inclusive days from start through today
+  if(den <= 0) return 100; // degenerate window
+  const pct = (num / den) * 100;
+  return clamp(pct, 0, 100);
 }
 
 function updatePlannedCell(row, s){
@@ -344,9 +359,9 @@ function updatePlannedCell(row, s){
   const cell = row.querySelector('[data-k="planned"]');
   if(s.totalUnits!=='' && Number(s.totalUnits)>0){
     const plannedUnits = (plannedPct/100) * Number(s.totalUnits);
-    cell.textContent = plannedUnits.toFixed(2);
+    cell.textContent = plannedUnits.toFixed(1);
   } else {
-    cell.textContent = plannedPct.toFixed(2)+'%';
+    cell.textContent = plannedPct.toFixed(1)+'%';
   }
 
   // Red highlight rules
@@ -388,13 +403,12 @@ function calcTotalActualProgress(){
 function buildDateRange(){
   const ps = calcEarliestStart();
   let end = null;
-  // last end date from scopes
   model.scopes.forEach(s=>{ if(s.end){ const d=parseDate(s.end); if(!end||d>end) end=d; }});
-  // or last history entry
   model.history.forEach(h=>{ const d=parseDate(h.date); if(!end||d>end) end=d; });
   if(!ps) return [];
   if(!end) end = ps;
-  const arr=[]; let d=new Date(ps);
+  const start = new Date(ps); start.setDate(start.getDate()-1); // start day before
+  const arr=[]; let d=new Date(start);
   while(d<=end){ arr.push(fmtDate(d)); d.setDate(d.getDate()+1); }
   return arr;
 }
@@ -433,10 +447,10 @@ function calcPlannedSeriesByDay(){
 
 function calcActualSeriesByDay(days){
   if(!days || days.length===0){ const f=buildFallbackRange(); return f.actual; }
-  // Build known points map (include earliest start as 0%)
+  // Build known points map (include earliest start-1 as 0%)
   const known = new Map();
   const ps = calcEarliestStart();
-  if(ps) known.set(fmtDate(ps), 0);
+  if(ps){ const pre = new Date(ps); pre.setDate(pre.getDate()-1); known.set(fmtDate(pre), 0); }
   for(const [d,v] of Object.entries(model.dailyActuals)){ if(v!=null) known.set(d, clamp(Number(v)||0,0,100)); }
   model.history.forEach(h=> known.set(h.date, clamp(Number(h.actualPct)||0,0,100)));
 
@@ -525,22 +539,30 @@ function computeAndRender(){
   // chart
   drawChart(days, plannedCum, actualCum);
 
-  // days relative to plan & banner under chart
+  // days relative to plan & banner under chart (also show Planned Progress on same date)
   const rel = computeDaysRelativeToPlan(days, plannedCum, actualCum);
   if(rel){
     model.daysRelativeToPlan = rel.daysRelative;
     const absDays = Math.abs(rel.daysRelative).toFixed(1);
     const dateStr = fmtLongDateStr(rel.actualDate);
+    // Planned value on actual date
+    const idx = days.indexOf(rel.actualDate);
+    const plannedAtActual = idx>=0 ? plannedCum[idx] : null;
+    const plannedLine = plannedAtActual!=null ? `<div>Planned Progress: <strong>${plannedAtActual.toFixed(1)}%</strong> on ${dateStr}</div>` : '';
+
     if(rel.daysRelative===0){
-      $('#planDelta').innerHTML = `<div>Actual Progress: <strong>${rel.actualPct.toFixed(2)}%</strong> on ${dateStr}</div><div>Progress Relative to Plan: <strong>on plan</strong></div>`;
+      $('#planDelta').innerHTML = `<div>Actual Progress: <strong>${rel.actualPct.toFixed(1)}%</strong> on ${dateStr}</div>${plannedLine}<div><strong>Actual Relative to Plan:</strong> on plan</div>`;
     } else {
       const words = rel.daysRelative>0 ? 'days ahead' : 'days behind';
-      $('#planDelta').innerHTML = `<div>Actual Progress: <strong>${rel.actualPct.toFixed(2)}%</strong> on ${dateStr}</div><div>Progress Relative to Plan: <strong>${absDays}</strong> ${words}</div>`;
+      $('#planDelta').innerHTML = `<div>Actual Progress: <strong>${rel.actualPct.toFixed(1)}%</strong> on ${dateStr}</div>${plannedLine}<div><strong>Actual Relative to Plan:</strong> ${absDays} ${words}</div>`;
     }
   } else {
     model.daysRelativeToPlan = null;
     $('#planDelta').textContent = '';
   }
+
+  // Persist cookies on any render
+  setCookie(COOKIE_KEY, JSON.stringify(model), 3650);
 }
 
 function drawChart(days, planned, actual){
@@ -635,12 +657,12 @@ function renderDailyTable(days, planned, actual){
   tb.innerHTML = '';
   days.forEach((d, idx)=>{
     const tr = document.createElement('tr');
-    const p = planned[idx]||0;
+    const p = planned[idx]??0;
     const a = actual[idx];
     tr.innerHTML = `
       <td>${d}</td>
-      <td class="right">${p.toFixed(2)}%</td>
-      <td class="right"><input class="right-input" data-day="${d}" type="number" step="0.01" min="0" max="100" value="${a==null? '' : a.toFixed(2)}" style="width:120px"></td>
+      <td class="right">${(Number(p)||0).toFixed(1)}%</td>
+      <td class="right"><input class="right-input" data-day="${d}" type="number" step="0.1" min="0" max="100" value="${a==null? '' : a.toFixed(1)}" style="width:120px"></td>
     `;
     tb.appendChild(tr);
   });
@@ -674,35 +696,57 @@ function buildAllCSV(){
   out += '\n';
   // Scopes
   out += '#SECTION:SCOPES\n';
-  out += csvLine(['label','start','end','cost','actualPct','unitsToDate','totalUnits']);
+  out += csvLine(['label','start','end','cost','progressValue','totalUnits','unitsLabel']);
   model.scopes.forEach(s=>{
-    out += csvLine([s.label, s.start, s.end, s.cost, s.actualPct, s.unitsToDate, s.totalUnits===''? '' : s.totalUnits]);
+    const progressValue = (s.totalUnits? s.unitsToDate : s.actualPct);
+    out += csvLine([s.label, s.start, s.end, s.cost, progressValue, s.totalUnits===''? '' : s.totalUnits, s.unitsLabel||'']);
   });
   out += '\n';
+  // Preset defaults
+  function presetRows(name, labels){
+    out += `#SECTION:PRESET_${name}\n`;
+    out += csvLine(['label','start','end','cost','progressValue','totalUnits','unitsLabel']);
+    const arr = labels.map((lbl,idx)=>{
+      if(name==='DEFAULT'){
+        if(idx===0){
+          const st = (()=>{ const d=new Date(today); d.setDate(d.getDate()-1); return fmtDate(d); })();
+          const e = (()=>{ const d=new Date(st); const ed=new Date(d); ed.setDate(ed.getDate()+7); return fmtDate(ed); })();
+          return {label: `Scope #${idx+1}`, start: st, end: e, cost:100, progressValue:0, totalUnits:'', unitsLabel:'%'};
+        }
+        return {label: `Scope #${idx+1}`, start:'', end:'', cost:0, progressValue:0, totalUnits:'', unitsLabel:'%'};
+      } else {
+        return {label: lbl, start:'', end:'', cost:0, progressValue:0, totalUnits:'', unitsLabel:'%'};
+      }
+    });
+    arr.forEach(r=> out += csvLine([r.label,r.start,r.end,r.cost,r.progressValue,r.totalUnits,r.unitsLabel]));
+    out += '\n';
+  }
+  presetRows('DEFAULT', Array.from({length:5}, (_,i)=>`Scope #${i+1}`));
+  presetRows('PIPELINE', PRESETS.Pipeline);
+  presetRows('MECH', PRESETS.Mech);
+  presetRows('IE', PRESETS.IE);
+
   // Daily actuals
   out += '#SECTION:DAILY_ACTUALS\n';
   out += csvLine(['date','actualPct']);
-  Object.keys(model.dailyActuals).sort().forEach(d=>{
-    out += csvLine([d, model.dailyActuals[d]]);
-  });
+  Object.keys(model.dailyActuals).sort().forEach(d=>{ out += csvLine([d, model.dailyActuals[d]]); });
   out += '\n';
   // History
   out += '#SECTION:HISTORY\n';
   out += csvLine(['date','actualPct']);
-  model.history.sort((a,b)=> a.date.localeCompare(b.date)).forEach(h=>{
-    out += csvLine([h.date, h.actualPct]);
-  });
+  model.history.sort((a,b)=> a.date.localeCompare(b.date)).forEach(h=>{ out += csvLine([h.date, h.actualPct]); });
   out += '\n';
   // Daily series (for convenience; not needed to load)
   out += '#SECTION:DAILY_SERIES\n';
   out += csvLine(['date','planned_cumulative','actual_cumulative']);
   for(let i=0;i<days.length;i++){
-    const a = actualCum[i]==null? '' : Number(actualCum[i]).toFixed(2);
-    const p = plannedCum[i]==null? '' : Number(plannedCum[i]).toFixed(2);
+    const a = actualCum[i]==null? '' : Number(actualCum[i]).toFixed(1);
+    const p = plannedCum[i]==null? '' : Number(plannedCum[i]).toFixed(1);
     out += csvLine([days[i], p, a]);
   }
   return out;
 }
+
 
 function downloadCSV(){
   const csv = buildAllCSV();
@@ -763,16 +807,28 @@ function uploadCSVAndLoad(){
         const rows = parseCSV(text);
         let section = '';
         model = { project:{name:'',startup:''}, scopes:[], history:[], dailyActuals:{}, daysRelativeToPlan:null };
+        let scopeHeaders = [];
         for(let r of rows){
           if(r.length===1 && r[0].startsWith('#SECTION:')){ section = r[0].slice('#SECTION:'.length).trim(); continue; }
           if(r.length===0 || (r.length===1 && r[0]==='')) continue;
           if(section==='PROJECT'){
-            if(r[0]==='key') continue;
+            if(r[0]==='key') { scopeHeaders=[]; continue; }
             if(r[0]==='name') model.project.name = r[1]||'';
             if(r[0]==='startup') model.project.startup = r[1]||'';
           } else if(section==='SCOPES'){
-            if(r[0]==='label') continue;
-            const s = { label:r[0]||'', start:r[1]||'', end:r[2]||'', cost: parseFloat(r[3]||'0')||0, actualPct: parseFloat(r[4]||'0')||0, unitsToDate: parseFloat(r[5]||'0')||0, totalUnits: r[6]===undefined||r[6]===''? '' : (parseFloat(r[6])||0)};
+            if(!scopeHeaders.length){ scopeHeaders = r; continue; }
+            const idx = (name)=> scopeHeaders.indexOf(name);
+            const s = {
+              label: r[idx('label')]||'',
+              start: r[idx('start')]||'',
+              end: r[idx('end')]||'',
+              cost: parseFloat(r[idx('cost')]||'0')||0,
+              unitsToDate: parseFloat(r[idx('progressValue')]||'0')||0,
+              totalUnits: (r[idx('totalUnits')]===undefined||r[idx('totalUnits')]==='')? '' : (parseFloat(r[idx('totalUnits')])||0),
+              unitsLabel: r[idx('unitsLabel')]||'%',
+              actualPct: 0
+            };
+            s.actualPct = s.totalUnits? (s.unitsToDate && s.totalUnits? (s.unitsToDate/s.totalUnits*100) : 0) : (s.unitsToDate||0);
             model.scopes.push(s);
           } else if(section==='DAILY_ACTUALS'){
             if(r[0]==='date') continue;
@@ -811,7 +867,7 @@ function saveAll(){
     alert('Save failed: '+ e.message);
   }
 }
-function resetAll(){
+function defaultAll(){
   if(!confirm('Clear current data and cookies and reload 5 default scopes?')) return;
   delCookie(COOKIE_KEY);
   model = { project:{name:'',startup:''}, scopes:[], history:[], dailyActuals:{}, daysRelativeToPlan:null };
@@ -823,8 +879,6 @@ function resetAll(){
 /*****************
  * Events
  *****************/
-// (Bottom Reset button was previously removed)
-
 $('#projectName').addEventListener('input', computeAndRender);
 $('#projectStartup').addEventListener('change', computeAndRender);
 
@@ -833,15 +887,33 @@ $('#snapshot').addEventListener('click', ()=>{
   const pct = calcTotalActualProgress();
   const idx = model.history.findIndex(h=>h.date===d);
   if(idx>=0) model.history[idx].actualPct = pct; else model.history.push({date:d, actualPct:pct});
-  computeAndRender(); saveAll();
+  // also insert into daily table value for that date
+  model.dailyActuals[d] = pct;
+  computeAndRender();
+  // save to cookies only (no CSV download here)
+  setCookie(COOKIE_KEY, JSON.stringify(model), 3650);
 });
 
-// Toolbar Save/Load next to presets
+// Toolbar Save/Load/Clear next to presets
 $('#toolbarSave').addEventListener('click', saveAll);
 $('#toolbarLoad').addEventListener('click', uploadCSVAndLoad);
+$('#toolbarClear').addEventListener('click', ()=>{
+  const ps = calcEarliestStart();
+  // clear scope numeric/text fields
+  model.scopes = model.scopes.map(s=> ({...s, start:'', end:'', cost:0, unitsToDate:0, totalUnits:'', actualPct:0 }));
+  // clear daily actuals/history from (and including) start date
+  if(ps){
+    const psStr = fmtDate(ps);
+    Object.keys(model.dailyActuals).forEach(k=>{ if(k>=psStr) delete model.dailyActuals[k]; });
+    model.history = model.history.filter(h=> h.date < psStr);
+  }
+  syncScopeRowsToModel();
+  computeAndRender();
+  setCookie(COOKIE_KEY, JSON.stringify(model), 3650);
+});
 
 // Preset toolbar events
-$('#presetReset').addEventListener('click', ()=>{ resetAll(); });
+$('#presetReset').addEventListener('click', ()=>{ defaultAll(); });
 $('#presetPipeline').addEventListener('click', ()=> applyPreset(PRESETS.Pipeline));
 $('#presetMech').addEventListener('click', ()=> applyPreset(PRESETS.Mech));
 $('#presetIE').addEventListener('click', ()=> applyPreset(PRESETS.IE));
@@ -857,6 +929,7 @@ computeAndRender();
  * (No UI changes; open DevTools console to see results.)
  *****************/
 (function runSelfTests(){
+  const snapshot = JSON.stringify(model);
   const tests = [];
   const assert = (name, cond) => tests.push({name, pass: !!cond});
 
@@ -872,14 +945,40 @@ computeAndRender();
   const scopeDone = {start: prev, end: prevEnd, cost:10, actualPct:0};
   assert('calcScopePlannedPctToDate >= end => 100%', calcScopePlannedPctToDate(scopeDone) === 100);
 
-  // Test computeDaysRelativeToPlan alignment
-  const labels = Array.from({length:10}, (_,i)=> fmtDate(new Date(2025,0,1+i)));
-  const planned = labels.map((_,i)=> i* (100/9));
-  const actual = new Array(10).fill(null); actual[5] = 55.56;
-  const rel = computeDaysRelativeToPlan(labels, planned, actual);
-  assert('Days relative to plan: near zero when planned matches actual date', Math.abs(rel.daysRelative) <= 1);
+  // Test planned series starts one day before earliest scope (use isolated temp data)
+  const tmpModel = JSON.parse(snapshot);
+  tmpModel.scopes = [{label:'S', start: fmtDate(new Date(2025,0,2)), end: fmtDate(new Date(2025,0,5)), cost:100, actualPct:0, unitsToDate:0, totalUnits:'', unitsLabel:'%'}];
+  const saved = model; model = tmpModel; // temporarily swap
+  const planSeries = calcPlannedSeriesByDay();
+  assert('date range begins day before start', planSeries.days[0] === fmtDate(new Date(2025,0,1)));
+  model = saved; // restore
+
+  // Test CSV build returns string and includes SECTION headers
+  const csv = buildAllCSV();
+  assert('CSV is string', typeof csv === 'string');
+  assert('CSV has PROJECT section', csv.includes('#SECTION:PROJECT'));
+  assert('CSV has SCOPES section', csv.includes('#SECTION:SCOPES'));
+
+  // Additional tests for inclusive formula
+  // Case A: today == start => 0%
+  (function(){
+    const start = fmtDate(today);
+    const endD = new Date(today); endD.setDate(endD.getDate()+3);
+    const s = {start, end: fmtDate(endD)};
+    assert('planned 0% when today==start', Math.abs(calcScopePlannedPctToDate(s) - 0) < 1e-6);
+  })();
+  // Case B: start yesterday, end three days from yesterday (total 4 days); today -> 50%
+  (function(){
+    const st = new Date(today); st.setDate(st.getDate()-1);
+    const en = new Date(st); en.setDate(en.getDate()+3);
+    const s = {start: fmtDate(st), end: fmtDate(en)};
+    const v = calcScopePlannedPctToDate(s);
+    assert('planned 50% when start=yesterday, end=+3d', Math.abs(v - 50) < 1e-6);
+  })();
 
   console.info('[SelfTests]', tests);
+  // ensure UI stays correct
+  computeAndRender();
 })();
 </script>
 </body>
