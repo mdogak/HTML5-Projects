@@ -155,7 +155,11 @@
  *****************/
 const $ = sel => document.querySelector(sel);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
-const today = new Date();
+function getLocalToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+const today = getLocalToday();
 $('#todayStr')?.remove(); // remove old element if present
 
 function parseDate(val){ return val ? new Date(val + 'T00:00:00') : null }
