@@ -1,0 +1,846 @@
+/*****************
+ * Utilities
+ *****************/
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+function getLocalToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+const today = getLocalToday();
+
+function parseDate(val){ return val ? new Date(val + 'T00:00:00') : null }
+function fmtDate(d){ return d ? d.toISOString().slice(0,10) : '' }
+function fmtLongDateStr(dStr){ const d=parseDate(dStr); return d? d.toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}) : dStr }
+function fmtLongToday(){ return new Date().toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}) }
+function daysBetween(a,b){ // inclusive span length
+  const ms = (parseDate(fmtDate(b)) - parseDate(fmtDate(a)));
+  return Math.floor(ms/86400000)+1;
+}
+function clamp(n,min,max){ return Math.max(min, Math.min(max,n)) }
+
+// Cookie helpers
+function setCookie(name, value, days=365){
+  const d = new Date(); d.setTime(d.getTime() + (days*24*60*60*1000));
+  const v = encodeURIComponent(value);
+  document.cookie = `${name}=${v};expires=${d.toUTCString()};path=/`;
+}
+function getCookie(name){
+  const n = name + '=';
+  const ca = document.cookie.split(';');
+  for(let c of ca){
+    while(c.charAt(0)==' ') c = c.substring(1);
+    if(c.indexOf(n)==0) return decodeURIComponent(c.substring(n.length,c.length));
+  }
+  return null;
+}
+function delCookie(name){ document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;` }
+
+/*****************
+ * Data model
+ *****************/
+let model = {
+  project:{ name:'', startup:'', markerLabel:'Project Start' },
+  scopes:[], // {label,start,end,cost,actualPct,unitsToDate,totalUnits,unitsLabel}
+  history:[], // [{date, actualPct}]
+  dailyActuals:{}, // { 'YYYY-MM-DD': number }
+  daysRelativeToPlan: null
+};
+
+function defaultScope(i){
+  // Scope #1 seeded with defaults: start = day before today, end = start + 7 days, cost=100
+  if(i===0){
+    const startDate = new Date(today); startDate.setDate(startDate.getDate()-1);
+    const endDate = new Date(startDate); endDate.setDate(endDate.getDate()+7);
+    const start = fmtDate(startDate);
+    const end = fmtDate(endDate);
+    return { label:`Scope #${i+1}`, start, end, cost:100, actualPct:0, unitsToDate:0, totalUnits:'', unitsLabel:'%' };
+  }
+  return { label:`Scope #${i+1}`, start:'', end:'', cost:0, actualPct:0, unitsToDate:0, totalUnits:'', unitsLabel:'%' };
+}
+
+function ensureRows(n){
+  const cont = $('#scopeRows');
+  const cur = cont.children.length;
+  for(let i=cur;i<n;i++) cont.appendChild(renderScopeRow(i));
+}
+
+function ensureDefaultScopes(){
+  model.scopes = Array.from({length:5}, (_,i)=> defaultScope(i));
+  syncScopeRowsToModel();
+}
+
+function syncScopeRowsToModel(){
+  const cont = $('#scopeRows');
+  cont.innerHTML = '';
+  for(let i=0;i<model.scopes.length;i++) cont.appendChild(renderScopeRow(i));
+  if(model.scopes.length===0) ensureRows(5);
+}
+
+function renderScopeRow(i){
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.dataset.index = i;
+  const s = model.scopes[i] || defaultScope(i);
+  if(!model.scopes[i]) model.scopes[i] = s;
+
+  row.innerHTML = `
+    <input data-k="label" placeholder="Scope #${i+1}" value="${s.label}">
+    <input data-k="start" type="date" value="${s.start}">
+    <input data-k="end" type="date" value="${s.end}">
+    <input data-k="cost" type="number" step="0.01" min="0" value="${s.cost}">
+    <div>
+      <input data-k="progress" type="number" step="0.01" min="0" placeholder="% to Date or Units to Date" value="${s.totalUnits? s.unitsToDate : s.actualPct}">
+    </div>
+    <input data-k="totalUnits" type="number" step="0.01" min="0" placeholder="Total Units" value="${s.totalUnits===0? '': s.totalUnits}">
+    <input data-k="unitsLabel" list="unitsList" placeholder="Units" value="${(s.totalUnits? (s.unitsLabel||'Feet') : (s.unitsLabel||'%'))}">
+    <div class="small" data-k="planned"></div>
+    <div class="actions">
+      <button class="iconbtn del" title="Remove this row">−</button>
+      <button class="iconbtn add" title="Add row below">+</button>
+    </div>
+  `;
+
+  row.addEventListener('input', onScopeChange);
+  row.addEventListener('change', onScopeChange);
+  return row;
+}
+
+function onScopeChange(e){
+  const row = e.currentTarget.classList.contains('row') ? e.currentTarget : e.currentTarget.closest('row');
+  const realRow = row || e.currentTarget.closest('.row');
+  if(!realRow) return;
+  const i = Number(realRow.dataset.index);
+  const s = model.scopes[i];
+  const inputs = {
+    label: realRow.querySelector('[data-k="label"]').value.trim(),
+    start: realRow.querySelector('[data-k="start"]').value,
+    end: realRow.querySelector('[data-k="end"]').value,
+    cost: parseFloat(realRow.querySelector('[data-k="cost"]').value||'0'),
+    progressVal: parseFloat(realRow.querySelector('[data-k="progress"]').value||'0'),
+    totalUnitsRaw: realRow.querySelector('[data-k="totalUnits"]').value,
+    unitsLabel: realRow.querySelector('[data-k="unitsLabel"]').value.trim()
+  };
+  s.label = inputs.label || `Scope #${i+1}`;
+  s.start = inputs.start; s.end = inputs.end; s.cost = isFinite(inputs.cost)?inputs.cost:0;
+  const tu = inputs.totalUnitsRaw === '' ? '' : clamp(parseFloat(inputs.totalUnitsRaw)||0,0,1e12);
+  s.totalUnits = tu;
+  // default units from Total Units presence only
+  if(tu!=='' && tu>0){ s.unitsLabel = inputs.unitsLabel || 'Feet'; }
+  else { s.unitsLabel = inputs.unitsLabel || '%'; }
+  if(tu!=='' && tu>0){ s.unitsToDate = clamp(inputs.progressVal,0,1e12); s.actualPct = tu>0 ? (s.unitsToDate/tu*100) : 0 }
+  else { s.unitsToDate = 0; s.actualPct = clamp(inputs.progressVal,0,100); }
+  updatePlannedCell(realRow, s);
+  computeAndRender();
+}
+
+/*****************
+ * Row +/- actions (event delegation)
+ *****************/
+$('#scopeRows').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  const row = e.target.closest('.row');
+  if(!row) return;
+  const i = Number(row.dataset.index);
+  if(btn.classList.contains('del')){
+    model.scopes.splice(i,1);
+    syncScopeRowsToModel();
+    computeAndRender();
+  } else if(btn.classList.contains('add')){
+    const newScope = defaultScope(i+1);
+    model.scopes.splice(i+1,0,newScope);
+    model.scopes = model.scopes.map((s,idx)=> ({...s, label: (s.label.startsWith('Scope #')? `Scope #${idx+1}` : s.label)}));
+    syncScopeRowsToModel();
+    computeAndRender();
+  }
+});
+
+/*****************
+ * Presets (replace + clear history/daily entries)
+ *****************/
+const PRESETS = {
+  Pipeline: [
+    'Mobilization','Mats/Clear/Grade ROW','String Pipe','Weld Pipe','Coat Pipe','Trenching','Bores','Lower-In/Backfill','Tie-Ins','Clean Up ROW','Site Work - Concrete Civil','SIte Work - Pipe prefab','Site Work - Hot Taps','Site Work - Pipe Install','Site Work - Paint','Final Bolt Up','Hydrotest','Seeding','Demobilization'
+  ],
+  Mech: [
+    'Mobilization','Grading','Foundations','Install Structural Steel/Supports','Fabricate/Install Pipe Rack','Grouting','Building Installation','Install Bollards','Install Access Stairs/Platforms','Fabricate Piping','Install Piping Spools','Set Equipment','Hydrotesting','Coating','Rocking','Demobilization'
+  ],
+  IE: [
+    'Mobilization','Install Cable Tray','Install Conduit','Install Devices','Install Control Cabinets','Install MCC','Pull Cable','Install Grounding','Install Process Tubing','Final Terminations','Install Lighting','Demobilization'
+  ]
+};
+
+function scopesFrom(labels){
+  return labels.map(lbl=>({label: lbl, start:'', end:'', cost:0, actualPct:0, unitsToDate:0, totalUnits:'', unitsLabel:'%'}));
+}
+function applyPreset(labels){
+  model.scopes = scopesFrom(labels);
+  model.history = [];
+  model.dailyActuals = {};
+  syncScopeRowsToModel();
+  computeAndRender();
+}
+
+/*****************
+ * Calculations
+ *****************/
+function calcEarliestStart(){
+  let start=null;
+  model.scopes.forEach(s=>{ if(s.start){ const d=parseDate(s.start); if(!start||d<start) start=d; }});
+  return start;
+}
+
+function calcScopePlannedPctToDate(s){
+  if(!s.start || !s.end) return 0;
+  const dStart = parseDate(s.start);
+  const dEnd = parseDate(s.end);
+  const t = parseDate(fmtDate(today));
+  if(t < dStart) return 0;            // before start
+  if(t > dEnd) return 100;            // after end
+  if(t.getTime() === dStart.getTime()) return 0; // exactly start day => 0%
+  const den = daysBetween(dStart, dEnd); // inclusive days in scope window
+  const num = daysBetween(dStart, t);    // inclusive days from start through today
+  if(den <= 0) return 100; // degenerate window
+  const pct = (num / den) * 100;
+  return clamp(pct, 0, 100);
+}
+
+function updatePlannedCell(row, s){
+  const plannedPct = calcScopePlannedPctToDate(s);
+  const cell = row.querySelector('[data-k="planned"]');
+  if(s.totalUnits!=='' && Number(s.totalUnits)>0){
+    const plannedUnits = (plannedPct/100) * Number(s.totalUnits);
+    cell.textContent = plannedUnits.toFixed(1);
+  } else {
+    cell.textContent = plannedPct.toFixed(1)+'%';
+  }
+
+  // Red highlight rules
+  const startEl = row.querySelector('[data-k="start"]');
+  const endEl = row.querySelector('[data-k="end"]');
+  startEl.classList.remove('red-border');
+  endEl.classList.remove('red-border');
+  cell.classList.remove('danger');
+
+  const actualPctForCompare = s.actualPct || 0;
+  if(actualPctForCompare < plannedPct) cell.classList.add('danger');
+  if(s.start){ if(parseDate(s.start) < parseDate(fmtDate(today)) && (actualPctForCompare===0)) startEl.classList.add('red-border'); }
+  if(s.end){ if(parseDate(s.end) < parseDate(fmtDate(today)) && (Math.round(actualPctForCompare) < 100)) endEl.classList.add('red-border'); }
+}
+
+function calcScopeWeightings(){
+  const total = model.scopes.reduce((a,b)=>a+(b.cost||0),0) || 0;
+  return model.scopes.map(s=> total>0 ? (s.cost/total) : 0);
+}
+
+function calcPlannedDailyOverall(){
+  // returns array parallel to scopes of daily % (weight / days)
+  const weightings = calcScopeWeightings();
+  return model.scopes.map((s,i)=>{
+    if(!s.start || !s.end) return {weight:0, perDay:0, start:null, end:null};
+    const w = weightings[i]||0;
+    const dStart = parseDate(s.start), dEnd = parseDate(s.end);
+    const days = daysBetween(dStart, dEnd); // inclusive
+    return {weight:w, perDay: days>0 ? w/days*100 : 0, start:dStart, end:dEnd};
+  });
+}
+
+function calcTotalActualProgress(){
+  const weightings = calcScopeWeightings();
+  const total = model.scopes.reduce((sum, s, i)=> sum + (weightings[i]||0) * (isFinite(s.actualPct)?s.actualPct:0), 0);
+  return clamp(total,0,100);
+}
+
+function buildDateRange(){
+  const ps = calcEarliestStart();
+  let end = null;
+  model.scopes.forEach(s=>{ if(s.end){ const d=parseDate(s.end); if(!end||d>end) end=d; }});
+  model.history.forEach(h=>{ const d=parseDate(h.date); if(!end||d>end) end=d; });
+  if(!ps) return [];
+  if(!end) end = ps;
+  const start = new Date(ps); start.setDate(start.getDate()-1); // start day before
+  const arr=[]; let d=new Date(start);
+  while(d<=end){ arr.push(fmtDate(d)); d.setDate(d.getDate()+1); }
+  return arr;
+}
+
+function buildFallbackRange(){
+  const d = fmtDate(today);
+  return {days:[d], planned:[0], actual:[0]};
+}
+
+function lastActualDate(){
+  let last=null;
+  for(const k of Object.keys(model.dailyActuals)){
+    if(model.dailyActuals[k]!=null){ const d=parseDate(k); if(!last||d>last) last=d; }
+  }
+  model.history.forEach(h=>{ const d=parseDate(h.date); if(!last||d>last) last=d; });
+  const ps = calcEarliestStart();
+  if(!last && ps) last = ps; // ensure we can place 0% at start
+  return last;
+}
+
+function calcPlannedSeriesByDay(){
+  const days = buildDateRange();
+  if(days.length===0){ const f=buildFallbackRange(); return {days:f.days, plannedCum:f.planned}; }
+  const per = calcPlannedDailyOverall();
+  const plannedCum=[];
+  let cum=0;
+  for(const ds of days){
+    const d=parseDate(ds);
+    let add=0;
+    per.forEach(p=>{ if(p.start && p.end && d>=p.start && d<=p.end) add += p.perDay; });
+    cum += add;
+    plannedCum.push(clamp(cum,0,100));
+  }
+  return {days, plannedCum};
+}
+
+function calcActualSeriesByDay(days){
+  if(!days || days.length===0){ const f=buildFallbackRange(); return f.actual; }
+  // Build known points map (include earliest start-1 as 0%)
+  const known = new Map();
+  const ps = calcEarliestStart();
+  if(ps){ const pre = new Date(ps); pre.setDate(pre.getDate()-1); known.set(fmtDate(pre), 0); }
+  for(const [d,v] of Object.entries(model.dailyActuals)){ if(v!=null) known.set(d, clamp(Number(v)||0,0,100)); }
+  model.history.forEach(h=> known.set(h.date, clamp(Number(h.actualPct)||0,0,100)));
+
+  const actual = new Array(days.length).fill(null);
+  const inRangeKeys = days.filter(d=> known.has(d));
+  inRangeKeys.sort();
+  if(inRangeKeys.length && days.length){ actual[days.indexOf(inRangeKeys[0])] = known.get(inRangeKeys[0]); }
+
+  for(let i=0;i<inRangeKeys.length-1;i++){
+    const d1 = inRangeKeys[i];
+    const d2 = inRangeKeys[i+1];
+    const v1 = known.get(d1);
+    const v2 = known.get(d2);
+    const idx1 = days.indexOf(d1);
+    const idx2 = days.indexOf(d2);
+    const span = idx2-idx1;
+    if(idx1>=0) actual[idx1]=v1;
+    for(let k=1;k<span;k++){
+      const t = k/span; // (0,1)
+      actual[idx1+k] = v1 + (v2 - v1) * t;
+    }
+    if(idx2>=0) actual[idx2]=v2;
+  }
+
+  // Do not show data past the last actual entry/date on the chart, but allow editing in table
+  const last = lastActualDate();
+  if(last){
+    for(let i=0;i<days.length;i++){
+      if(parseDate(days[i])>last) actual[i]=null;
+    }
+  }
+  return actual.map(v=> v==null? v : clamp(Number(v)||0,0,100));
+}
+
+// Interpolated "Actual Relative to Plan" (fractional days)
+function computeDaysRelativeToPlan(days, planned, actual){
+  if(!days.length) return null;
+  // latest actual index with value
+  let aIdx = -1; let aPct = 0;
+  for(let i=actual.length-1;i>=0;i--){ if(actual[i]!=null){ aIdx=i; aPct=actual[i]; break; } }
+  if(aIdx<0) return null;
+
+  // find segment where planned crosses aPct
+  let j = planned.findIndex(v => v!=null && v >= aPct);
+  if(j <= 0){
+    const pStar = j < 0 ? planned.length - 1 : 0; // never reaches (use end) or instant
+    const daysRelEdge = pStar - aIdx;
+    return { actualDate: days[aIdx], actualPct: aPct, plannedDateForActualPct: days[Math.max(0, Math.min(days.length-1, Math.round(pStar)))], daysRelative: daysRelEdge };
+  }
+  const p0 = planned[j-1] ?? 0; const p1 = planned[j] ?? p0;
+  let t = 0;
+  if(Math.abs(p1 - p0) > 1e-9){ t = (aPct - p0) / (p1 - p0); }
+  const pStar = (j-1) + t; // fractional index where planned equals aPct
+  const daysRel = pStar - aIdx;
+  return { actualDate: days[aIdx], actualPct: aPct, plannedDateForActualPct: days[Math.max(0, Math.min(days.length-1, Math.round(pStar)))], daysRelative: daysRel };
+}
+
+/*****************
+ * Rendering & Chart
+ *****************/
+let chart;
+function computeAndRender(){
+  // Ensure at least 5 scope rows are present
+  if($('#scopeRows').children.length===0 && model.scopes.length===0){ ensureRows(5); }
+
+  // project model from inputs
+  model.project.name = $('#projectName').value.trim();
+  model.project.startup = $('#projectStartup').value;
+  model.project.markerLabel = ($('#startupLabelInput').value || 'Project Start').trim();
+  // mirror label text next to date input
+  $('#startupDateLabel').textContent = model.project.markerLabel || 'Project Start';
+
+  // update planned cells
+  $$('#scopeRows .row').forEach((row)=>{
+    const i = Number(row.dataset.index);
+    updatePlannedCell(row, model.scopes[i]);
+  });
+
+  // total actual
+  const totalActual = calcTotalActualProgress();
+  $('#totalActual').textContent = totalActual.toFixed(2)+'%';
+  // summary line: "as of today <Long Date>"
+  $('#asOf').textContent = `as of today ${fmtLongToday()}`;
+
+  // build series
+  const plan = calcPlannedSeriesByDay();
+  const days = plan.days || [];
+  const plannedCum = plan.plannedCum || plan.planned || [];
+  const actualCum = calcActualSeriesByDay(days);
+
+  // daily table
+  renderDailyTable(days, plannedCum, actualCum);
+
+  // chart
+  drawChart(days, plannedCum, actualCum);
+
+  // days relative to plan & banner under chart (also show Planned Progress on same date)
+  const rel = computeDaysRelativeToPlan(days, plannedCum, actualCum);
+  if(rel){
+    model.daysRelativeToPlan = rel.daysRelative;
+    const absDaysStr = Math.abs(rel.daysRelative).toFixed(1);
+    const dateStr = fmtLongDateStr(rel.actualDate);
+    const idx = days.indexOf(rel.actualDate);
+    const plannedAtActual = idx>=0 ? plannedCum[idx] : null;
+    const plannedLine = plannedAtActual!=null ? `<div>Planned Progress: <strong>${plannedAtActual.toFixed(1)}%</strong> on ${dateStr}</div>` : '';
+
+    if(rel.daysRelative===0){
+      $('#planDelta').innerHTML = `<div>Actual Progress: <strong>${rel.actualPct.toFixed(1)}%</strong> on ${dateStr}</div>${plannedLine}<div>Actual Relative to Plan: on plan</div>`;
+    } else {
+      const words = rel.daysRelative>0 ? 'days ahead' : 'days behind';
+      $('#planDelta').innerHTML = `<div>Actual Progress: <strong>${rel.actualPct.toFixed(1)}%</strong> on ${dateStr}</div>${plannedLine}<div>Actual Relative to Plan: <strong>${absDaysStr}</strong> ${words}</div>`;
+    }
+  } else {
+    model.daysRelativeToPlan = null;
+    $('#planDelta').textContent = '';
+  }
+
+  // Persist cookies on any render
+  setCookie(COOKIE_KEY, JSON.stringify(model), 3650);
+}
+
+function drawChart(days, planned, actual){
+  const labels = (days && days.length)? days.map(d=>d) : [fmtDate(today)];
+  const dataPlanned = (planned && planned.length)? planned : [0];
+  const dataActual = (actual && actual.length)? actual : [0];
+
+  const yAxisLabelAnnotation = {
+    type:'label',
+    xValue: labels[0],
+    yValue: 50,
+    content:['% Progress'],
+    backgroundColor:'rgba(0,0,0,0)',
+    color:'#0f172a',
+    rotation:-90,
+    xAdjust:-55,
+    font:{weight:'bold'}
+  };
+
+  let startupLabel = null;
+  if(model.project.startup){
+    const idx = labels.indexOf(model.project.startup);
+    if(idx>=0){
+      const y = dataPlanned[idx] ?? 0;
+      const greenText = (model.project.markerLabel || 'Project Start') + ' >';
+      startupLabel = {
+        type:'label',
+        xValue: labels[idx],
+        yValue: y,
+        content:[greenText],
+        backgroundColor:'rgba(0,0,0,0)',
+        color:'#16a34a',
+        rotation:-90,
+        yAdjust: 22,
+        font:{weight:'bold', size: 15}
+      };
+    }
+  }
+
+  const titleText = (model.project.name ? (model.project.name + ' Overall Progress') : 'Overall Progress');
+
+  const weeks = Math.floor(labels.length/7);
+  const xGridColor = (ctx)=>{
+    const idx = ctx.index;
+    const isWeekly = (idx % 7) === 0;
+    if(weeks > 16){
+      return isWeekly ? 'rgba(100,116,139,.45)' : 'rgba(0,0,0,0)';
+    }
+    return 'rgba(100,116,139,.45)';
+  };
+
+  const cfg = {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        {label:'Planned', order: 1, data:dataPlanned, borderColor:'rgba(37,99,235,1)', backgroundColor:'rgba(37,99,235,.12)', tension:.15, borderWidth:2, pointRadius:0},
+        {label:'Actual', order: 10, data:dataActual, spanGaps:false, borderColor:'rgba(234,88,12,1)', backgroundColor:'rgba(234,88,12,.12)', tension:.15, borderWidth:2, pointRadius:0}
+      ]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{labels:{color: '#0f172a'}},
+        title:{display:true, text: titleText, color:'#0f172a', font:{size:20, weight:'bold'}},
+        annotation: { annotations: Object.assign({}, { yLabelAt50: yAxisLabelAnnotation }, startupLabel? { startupLabel } : {}) }
+      },
+      scales:{
+        x:{
+          ticks:{ color:'#0f172a', autoSkip:false, callback:(val, idx)=> idx%7===0 ? labels[idx] : '' },
+          grid:{ color:xGridColor, tickLength:4 }
+        },
+        y:{
+          min:0,max:100,
+          ticks:{ color:'#0f172a', stepSize:10, callback:(v)=> v+'%' },
+          grid:{ color:'rgba(100,116,139,.45)' }
+        }
+      }
+    }
+  };
+
+  if(chart){ chart.destroy(); }
+  const ctx = document.getElementById('progressChart').getContext('2d');
+  chart = new Chart(ctx, cfg);
+}
+
+function renderDailyTable(days, planned, actual){
+  const tb = $('#dailyTable tbody');
+  tb.innerHTML = '';
+  days.forEach((d, idx)=>{
+    const tr = document.createElement('tr');
+    const p = planned[idx]??0;
+    const a = actual[idx];
+    tr.innerHTML = `
+      <td>${d}</td>
+      <td class="right">${(Number(p)||0).toFixed(1)}%</td>
+      <td class="right"><input class="right-input" data-day="${d}" type="number" step="0.1" min="0" max="100" value="${a==null? '' : a.toFixed(1)}" style="width:120px"></td>
+    `;
+    tb.appendChild(tr);
+  });
+  // Only recompute after user finishes editing (blur/change), not on every keystroke
+  $$('#dailyTable input[type=number]').forEach(inp=>{
+    const handler = ()=>{ const day = inp.dataset.day; const raw = inp.value; const v = raw===''? undefined : clamp(parseFloat(raw)||0,0,100); model.dailyActuals[day] = v; computeAndRender(); };
+    inp.addEventListener('change', handler);
+    inp.addEventListener('blur', handler);
+  });
+}
+
+/*****************
+ * CSV helpers (Save via toolbar Save)
+ *****************/
+function csvEsc(v){
+  if(v==null) return '';
+  const s = String(v);
+  return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function csvLine(arr){ return arr.map(csvEsc).join(',') + '\n'; }
+
+function buildAllCSV(){
+  const {days, plannedCum} = calcPlannedSeriesByDay();
+  const actualCum = calcActualSeriesByDay(days);
+  let out = '';
+  // Project
+  out += '#SECTION:PROJECT\n';
+  out += csvLine(['key','value']);
+  out += csvLine(['name', model.project.name||'']);
+  out += csvLine(['startup', model.project.startup||'']);
+  out += csvLine(['markerLabel', model.project.markerLabel||'Project Start']);
+  out += '\n';
+  // Scopes
+  out += '#SECTION:SCOPES\n';
+  out += csvLine(['label','start','end','cost','progressValue','totalUnits','unitsLabel']);
+  model.scopes.forEach(s=>{
+    const progressValue = (s.totalUnits? s.unitsToDate : s.actualPct);
+    out += csvLine([s.label, s.start, s.end, s.cost, progressValue, s.totalUnits===''? '' : s.totalUnits, s.unitsLabel||'']);
+  });
+  out += '\n';
+  // Preset defaults
+  function presetRows(name, labels){
+    out += `#SECTION:PRESET_${name}\n`;
+    out += csvLine(['label','start','end','cost','progressValue','totalUnits','unitsLabel']);
+    const arr = labels.map((lbl,idx)=>{
+      if(name==='DEFAULT'){
+        if(idx===0){
+          const st = (()=>{ const d=new Date(today); d.setDate(d.getDate()-1); return fmtDate(d); })();
+          const e = (()=>{ const d = parseDate(st); const ed=new Date(d.getTime()); ed.setDate(ed.getDate()+7); return fmtDate(ed); })();
+          return {label: `Scope #${idx+1}`, start: st, end: e, cost:100, progressValue:0, totalUnits:'', unitsLabel:'%'};
+        }
+        return {label: `Scope #${idx+1}`, start:'', end:'', cost:0, progressValue:0, totalUnits:'', unitsLabel:'%'};
+      } else {
+        return {label: lbl, start:'', end:'', cost:0, progressValue:0, totalUnits:'', unitsLabel:'%'};
+      }
+    });
+    arr.forEach(r=> out += csvLine([r.label,r.start,r.end,r.cost,r.progressValue,r.totalUnits,r.unitsLabel]));
+    out += '\n';
+  }
+  presetRows('DEFAULT', Array.from({length:5}, (_,i)=>`Scope #${i+1}`));
+  presetRows('PIPELINE', PRESETS.Pipeline);
+  presetRows('MECH', PRESETS.Mech);
+  presetRows('IE', PRESETS.IE);
+
+  // Daily actuals
+  out += '#SECTION:DAILY_ACTUALS\n';
+  out += csvLine(['date','actualPct']);
+  Object.keys(model.dailyActuals).sort().forEach(d=>{ out += csvLine([d, model.dailyActuals[d]]); });
+  out += '\n';
+  // History
+  out += '#SECTION:HISTORY\n';
+  out += csvLine(['date','actualPct']);
+  model.history.sort((a,b)=> a.date.localeCompare(b.date)).forEach(h=>{ out += csvLine([h.date, h.actualPct]); });
+  out += '\n';
+  // Daily series (for convenience; not needed to load)
+  out += '#SECTION:DAILY_SERIES\n';
+  out += csvLine(['date','planned_cumulative','actual_cumulative']);
+  for(let i=0;i<days.length;i++){
+    const a = actualCum[i]==null? '' : Number(actualCum[i]).toFixed(1);
+    const p = plannedCum[i]==null? '' : Number(plannedCum[i]).toFixed(1);
+    out += csvLine([days[i], p, a]);
+  }
+  return out;
+}
+
+
+function downloadCSV(){
+  const csv = buildAllCSV();
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (model.project.name? model.project.name.replace(/\s+/g,'_')+'_': '') + 'progress_all.csv';
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+
+function parseCSV(text){
+  const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  const rows=[]; let cur=[]; let inQuote=false; let field='';
+  function pushField(){ cur.push(field); field=''; }
+  function pushRow(){ rows.push(cur); cur=[]; }
+  for(const line of lines){
+    let i=0; inQuote=false; field=''; cur=[];
+    while(i<line.length){
+      const ch = line[i];
+      if(inQuote){
+        if(ch==='"' && line[i+1]==='"'){ field+='"'; i+=2; continue; }
+        if(ch==='"'){ inQuote=false; i++; continue; }
+        field+=ch; i++; continue;
+      } else {
+        if(ch==='"'){ inQuote=true; i++; continue; }
+        if(ch===','){ pushField(); i++; continue; }
+        field+=ch; i++; continue;
+      }
+    }
+    pushField(); pushRow();
+  }
+  return rows;
+}
+
+function uploadCSVAndLoad(){
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='.csv,text/csv';
+  inp.onchange = () => {
+    const file = inp.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      try{
+        const text = e.target.result;
+        // Legacy daily-only support
+        if(/^Date,Planned_Cumulative,Actual_Cumulative/m.test(text)){
+          const lines = text.trim().split(/\r?\n/); lines.shift();
+          model.dailyActuals = {};
+          for(const line of lines){
+            const parts = line.split(',');
+            const d = parts[0]; const a = parts[2];
+            if(d && a!=='' && !isNaN(parseFloat(a))) model.dailyActuals[d] = clamp(parseFloat(a),0,100);
+          }
+          computeAndRender();
+          alert('Legacy daily CSV loaded.');
+          return;
+        }
+        // Full multi-section CSV
+        const rows = parseCSV(text);
+        let section = '';
+        model = { project:{name:'',startup:'', markerLabel:'Project Start'}, scopes:[], history:[], dailyActuals:{}, daysRelativeToPlan:null };
+        let scopeHeaders = [];
+        for(let r of rows){
+          if(r.length===1 && r[0].startsWith('#SECTION:')){ section = r[0].slice('#SECTION:'.length).trim(); continue; }
+          if(r.length===0 || (r.length===1 && r[0]==='')) continue;
+          if(section==='PROJECT'){
+            if(r[0]==='key') { scopeHeaders=[]; continue; }
+            if(r[0]==='name') model.project.name = r[1]||'';
+            if(r[0]==='startup') model.project.startup = r[1]||'';
+            if(r[0]==='markerLabel') model.project.markerLabel = r[1]||'Project Start';
+          } else if(section==='SCOPES'){
+            if(!scopeHeaders.length){ scopeHeaders = r; continue; }
+            const idx = (name)=> scopeHeaders.indexOf(name);
+            const s = {
+              label: r[idx('label')]||'',
+              start: r[idx('start')]||'',
+              end: r[idx('end')]||'',
+              cost: parseFloat(r[idx('cost')]||'0')||0,
+              unitsToDate: parseFloat(r[idx('progressValue')]||'0')||0,
+              totalUnits: (r[idx('totalUnits')]===undefined||r[idx('totalUnits')]==='')? '' : (parseFloat(r[idx('totalUnits')])||0),
+              unitsLabel: r[idx('unitsLabel')]||'%',
+              actualPct: 0
+            };
+            s.actualPct = s.totalUnits? (s.unitsToDate && s.totalUnits? (s.unitsToDate/s.totalUnits*100) : 0) : (s.unitsToDate||0);
+            model.scopes.push(s);
+          } else if(section==='DAILY_ACTUALS'){
+            if(r[0]==='date') continue;
+            const d = r[0]; const a = r[1];
+            if(d){ model.dailyActuals[d] = a===''? undefined : clamp(parseFloat(a)||0,0,100); }
+          } else if(section==='HISTORY'){
+            if(r[0]==='date') continue;
+            if(r[0]) model.history.push({date:r[0], actualPct: parseFloat(r[1]||'0')||0});
+          }
+        }
+        // hydrate inputs
+        $('#projectName').value = model.project.name||'';
+        $('#projectStartup').value = model.project.startup||'';
+        $('#startupLabelInput').value = model.project.markerLabel || 'Project Start';
+        $('#startupDateLabel').textContent = model.project.markerLabel || 'Project Start';
+        syncScopeRowsToModel();
+        computeAndRender();
+        setCookie(COOKIE_KEY, JSON.stringify(model), 3650);
+        alert('Full CSV loaded.');
+      }catch(err){ alert('Failed to parse CSV: '+err.message); }
+    };
+    reader.readAsText(file);
+  };
+  inp.click();
+}
+
+/*****************
+ * Persistence and Controls
+ *****************/
+const COOKIE_KEY='progress_tracker_v3';
+function saveAll(){
+  const payload = JSON.stringify(model);
+  try{
+    setCookie(COOKIE_KEY, payload, 3650);
+    downloadCSV();
+    alert('Saved and CSV downloaded.');
+  }catch(e){
+    alert('Save failed: '+ e.message);
+  }
+}
+function defaultAll(){
+  if(!confirm('Clear current data and cookies and reload 5 default scopes?')) return;
+  delCookie(COOKIE_KEY);
+  model = { project:{name:'',startup:'', markerLabel:'Project Start'}, scopes:[], history:[], dailyActuals:{}, daysRelativeToPlan:null };
+  $('#projectName').value=''; $('#projectStartup').value='';
+  $('#startupLabelInput').value='Project Start'; $('#startupDateLabel').textContent='Project Start';
+  ensureDefaultScopes();
+  computeAndRender();
+}
+
+/*****************
+ * Events
+ *****************/
+$('#projectName').addEventListener('input', computeAndRender);
+$('#projectStartup').addEventListener('change', computeAndRender);
+$('#startupLabelInput').addEventListener('input', computeAndRender);
+
+$('#snapshot').addEventListener('click', ()=>{
+  const d = fmtDate(today);
+  const pct = calcTotalActualProgress();
+  const idx = model.history.findIndex(h=>h.date===d);
+  if(idx>=0) model.history[idx].actualPct = pct; else model.history.push({date:d, actualPct:pct});
+  // also insert into daily table value for that date
+  model.dailyActuals[d] = pct;
+  computeAndRender();
+  // save to cookies only (no CSV download here)
+  setCookie(COOKIE_KEY, JSON.stringify(model), 3650);
+});
+
+// Toolbar Save/Load/Clear next to presets
+$('#toolbarSave').addEventListener('click', saveAll);
+$('#toolbarLoad').addEventListener('click', uploadCSVAndLoad);
+$('#toolbarClear').addEventListener('click', ()=>{
+  const ps = calcEarliestStart();
+  // clear scope numeric/text fields
+  model.scopes = model.scopes.map(s=> ({...s, start:'', end:'', cost:0, unitsToDate:0, totalUnits:'', actualPct:0 }));
+  // clear daily actuals/history from (and including) start date
+  if(ps){
+    const psStr = fmtDate(ps);
+    Object.keys(model.dailyActuals).forEach(k=>{ if(k>=psStr) delete model.dailyActuals[k]; });
+    model.history = model.history.filter(h=> h.date < psStr);
+  }
+  syncScopeRowsToModel();
+  computeAndRender();
+  setCookie(COOKIE_KEY, JSON.stringify(model), 3650);
+});
+
+// Preset toolbar events
+$('#presetReset').addEventListener('click', ()=>{ defaultAll(); });
+$('#presetPipeline').addEventListener('click', ()=> applyPreset(PRESETS.Pipeline));
+$('#presetMech').addEventListener('click', ()=> applyPreset(PRESETS.Mech));
+$('#presetIE').addEventListener('click', ()=> applyPreset(PRESETS.IE));
+
+/*****************
+ * Init
+ *****************/
+ensureDefaultScopes();
+computeAndRender();
+
+/*****************
+ * Minimal Self Tests (console only)
+ * (No UI changes; open DevTools console to see results.)
+ *****************/
+(function runSelfTests(){
+  const snapshot = JSON.stringify(model);
+  const tests = [];
+  const assert = (name, cond) => tests.push({name, pass: !!cond});
+
+  // Test daysBetween inclusivity
+  assert('daysBetween same day = 1', daysBetween(parseDate('2025-01-01'), parseDate('2025-01-01')) === 1);
+  assert('daysBetween two days = 2', daysBetween(parseDate('2025-01-01'), parseDate('2025-01-02')) === 2);
+
+  // Test calcScopePlannedPctToDate terminal 100%
+  const yest = new Date(today); yest.setDate(yest.getDate()-2);
+  const prev = fmtDate(yest);
+  const yes2 = new Date(today); yes2.setDate(yes2.getDate()-1);
+  const prevEnd = fmtDate(yes2);
+  const scopeDone = {start: prev, end: prevEnd, cost:10, actualPct:0};
+  assert('calcScopePlannedPctToDate >= end => 100%', calcScopePlannedPctToDate(scopeDone) === 100);
+
+  // Test planned series starts one day before earliest scope (use isolated temp data)
+  const tmpModel = JSON.parse(snapshot);
+  tmpModel.scopes = [{label:'S', start: fmtDate(new Date(2025,0,2)), end: fmtDate(new Date(2025,0,5)), cost:100, actualPct:0, unitsToDate:0, totalUnits:'', unitsLabel:'%'}];
+  const saved = model; model = tmpModel; // temporarily swap
+  const planSeries = calcPlannedSeriesByDay();
+  assert('date range begins day before start', planSeries.days[0] === fmtDate(new Date(2025,0,1)));
+  model = saved; // restore
+
+  // Test CSV build returns string and includes SECTION headers
+  const csv = buildAllCSV();
+  assert('CSV is string', typeof csv === 'string');
+  assert('CSV has PROJECT section', csv.includes('#SECTION:PROJECT'));
+  assert('CSV has SCOPES section', csv.includes('#SECTION:SCOPES'));
+
+  // Additional tests for inclusive formula
+  // Case A: today == start => 0%
+  (function(){
+    const start = fmtDate(today);
+    const endD = new Date(today.getTime()); endD.setDate(endD.getDate()+3);
+    const s = {start, end: fmtDate(endD)};
+    assert('planned 0% when today==start', Math.abs(calcScopePlannedPctToDate(s) - 0) < 1e-6);
+  })();
+  // Case B: start yesterday, end three days from yesterday (total 4 days); today -> 50%
+  (function(){
+    const st = new Date(today.getTime()); st.setDate(st.getDate()-1);
+    const en = new Date(st.getTime()); en.setDate(en.getDate()+3);
+    const s = {start: fmtDate(st), end: fmtDate(en)};
+    const v = calcScopePlannedPctToDate(s);
+    assert('planned 50% when start=yesterday, end=+3d', Math.abs(v - 50) < 1e-6);
+  })();
+
+  const failed = tests.filter(t=>!t.pass);
+  if(failed.length){
+    console.warn('[SelfTests] FAIL', failed, tests);
+  } else {
+    console.info('[SelfTests]
