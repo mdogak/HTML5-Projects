@@ -17,13 +17,13 @@ p{font-size:13px;line-height:1.6}#begin{width:100%;background:#ffcf67;color:#141
 </style></head>
 <body><video id="camera" autoplay playsinline muted></video><canvas id="game"></canvas>
 <div id="hud"><div class="hud">ROUND <span id="round">01</span><br>SCORE <span id="score">000000</span></div><div class="hud">SHOTS <span id="shots">● ● ●</span><br>HITS <span id="hits">0/10</span></div></div>
-<div id="tools"><button id="sound">♫ SOUND ON</button><button id="recenter">RECENTER</button><button id="hands">TRY HAND MODE</button><button id="sensitivity">TRIGGER: NORMAL</button></div>
+<div id="tools"><button id="sound">♫ SOUND ON</button><button id="recenter">RECENTER</button><button id="hands">RETRY HAND TRACKING</button></div>
 <button id="fire">FIRE</button><div id="status">Ready</div><div id="handInfo"></div>
-<div id="panel"><div id="card"><h1>DUCK HUNT<br>AR</h1><p>Rebuilt for iPhone browsers. Turn your phone to aim: ducks remain at approximate directions in the room, instead of following the screen.</p><p>Press <b>FIRE</b> to shoot. If motion access is unavailable, drag the screen to aim. Optional finger tracking requires an external library and a hand visible to the rear camera.</p><p>3 shots per duck · 10 ducks per round · retro sounds and dog.</p><button id="begin">START GAME</button></div></div>
+<div id="panel"><div id="card"><h1>DUCK HUNT<br>AR</h1><p>Rebuilt for iPhone browsers. Turn your phone to aim: ducks remain at approximate directions in the room, instead of following the screen.</p><p>When finger tracking is active, touch a duck with the crosshair to shoot. FIRE is the backup control. If motion access is unavailable, drag the screen to aim. Hand tracking starts automatically. Move your index fingertip crosshair onto a duck to shoot it automatically.</p><p>3 shots per duck · 10 ducks per round · retro sounds and dog.</p><button id="begin">START GAME</button></div></div>
 <script>
 (()=>{'use strict';
 const el=id=>document.getElementById(id),c=el('game'),g=c.getContext('2d'),v=el('camera');
-let W=innerWidth,H=innerHeight,playing=false,round=1,score=0,hits=0,spawned=0,shots=3,duck=null,dog=null,particles=[],last=0,next=0,roundWait=0,audio=null,silent=false,orientation=null,origin=null,motion=false,dragYaw=0,dragPitch=0,dragging=false,px=0,py=0,handMode=false,handReady=false,handLandmarks=null,handClosed=false,handTimer=0,handBusy=false,handAim=null,aimHoldUntil=0,thumbFrames=0,thumbOpenFrames=0,triggerSensitivity=1.05;
+let W=innerWidth,H=innerHeight,playing=false,round=1,score=0,hits=0,spawned=0,shots=3,duck=null,dog=null,particles=[],last=0,next=0,roundWait=0,audio=null,silent=false,orientation=null,origin=null,motion=false,dragYaw=0,dragPitch=0,dragging=false,px=0,py=0,handMode=false,handReady=false,handLandmarks=null,handClosed=false,handTimer=0,handBusy=false,handAim=null,overlapStart=0,handSeenAt=0;
 const DEG=Math.PI/180,FOV=58,colors=['#b47a36','#87a866','#9a83b3','#d4a05b'];
 function size(){W=innerWidth;H=innerHeight;const d=Math.min(devicePixelRatio||1,2);c.width=W*d;c.height=H*d;g.setTransform(d,0,0,d,0,0)}addEventListener('resize',size);size();
 const status=t=>el('status').textContent=t,diag=t=>{el('handInfo').style.display='block';el('handInfo').textContent=t};
@@ -47,6 +47,12 @@ function frame(t){if(!playing)return;const dt=Math.min((t-last)/1000||.016,.05);
 if(!duck&&!dog&&t>next){if(spawned<10)spawn(t);else if(!roundWait)roundWait=t+1500}
 if(roundWait&&t>roundWait){round++;spawned=0;roundWait=0;sfx('round');hud();next=t+500}
 if(duck){duck.age+=dt;if(duck.state==='fly'){duck.yaw+=duck.vx*dt;duck.pitch+=duck.vy*dt+Math.sin(duck.age*3+duck.phase)*dt*1.8;if(duck.age>6.2){duck=null;dogShow(t,true);next=t+2000}else{duck.screen=project(duck);if(duck.screen.x>-80&&duck.screen.x<W+80&&duck.screen.y>-80&&duck.screen.y<H+80)duckDraw(duck.screen.x,duck.screen.y,duck,duck.age)}}else{duck.fall+=dt;duck.screen.y+=duck.fall*400*dt;duckDraw(duck.screen.x,duck.screen.y,duck,duck.age);if(duck.screen.y>H+60){duck=null;dogShow(t,false);next=t+1700}}}
+// Automatic hit: require fingertip crosshair to overlap a flying duck for 100 ms.
+if(handMode&&handReady&&handAim&&duck&&duck.state==='fly'&&duck.screen&&performance.now()-handSeenAt<600){
+const dist=Math.hypot(duck.screen.x-handAim.x*W,duck.screen.y-handAim.y*H);
+if(dist<Math.max(24,Math.min(W,H)*.065)){if(!overlapStart)overlapStart=t;if(t-overlapStart>=100){overlapStart=0;shoot()}}
+else overlapStart=0
+}else overlapStart=0;
 for(const p of particles){p.t+=dt;if(p.kind==='spark'){p.x+=p.vx*dt;p.y+=p.vy*dt;g.fillStyle='#ffdb63';g.fillRect(p.x,p.y,4,4)}else{g.strokeStyle='rgba(255,220,80,'+Math.max(0,1-p.t*7)+')';g.lineWidth=3;g.beginPath();g.arc(p.x,p.y,8+p.t*110,0,7);g.stroke()}}particles=particles.filter(p=>p.t<(p.kind==='flash'?.17:.45));dogDraw(t);
 let x=W/2,y=H/2;if(handMode&&handReady&&handLandmarks){x=(handAim||handLandmarks[8]).x*W;y=(handAim||handLandmarks[8]).y*H}g.strokeStyle=handMode&&handReady?'#ffe56b':'#91efff';g.lineWidth=3;g.beginPath();g.arc(x,y,19,0,7);g.moveTo(x-31,y);g.lineTo(x-10,y);g.moveTo(x+10,y);g.lineTo(x+31,y);g.moveTo(x,y-31);g.lineTo(x,y-10);g.moveTo(x,y+10);g.lineTo(x,y+31);g.stroke();requestAnimationFrame(frame)}
 c.addEventListener('pointerdown',e=>{dragging=true;px=e.clientX;py=e.clientY;c.setPointerCapture(e.pointerId)});c.addEventListener('pointermove',e=>{if(!dragging)return;dragYaw-=(e.clientX-px)/W*FOV;dragPitch-=(e.clientY-py)/H*44;px=e.clientX;py=e.clientY});c.addEventListener('pointerup',()=>dragging=false);c.addEventListener('pointercancel',()=>dragging=false);
@@ -59,27 +65,16 @@ if(typeof Hands==='undefined')throw new Error('Hands library unavailable');const
 hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.5,minTrackingConfidence:.5});
 hands.onResults(r=>{
 handLandmarks=r.multiHandLandmarks?.[0]||null;handReady=!!handLandmarks;
-if(!handReady){thumbFrames=0;thumbOpenFrames=0;diag('Hand model ready • show your pointing hand to the rear camera');return}
-const lm=handLandmarks,tip=lm[8],indexBase=lm[5],indexJoint=lm[6],middleBase=lm[9],pinkyBase=lm[17],thumb=lm[4];
-const palm=Math.max(.025,Math.hypot(indexBase.x-pinkyBase.x,indexBase.y-pinkyBase.y));
-const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y)/palm;
-const triggerDistance=Math.min(dist(thumb,indexBase),dist(thumb,indexJoint),dist(thumb,middleBase));
-const indexExtended=dist(tip,indexBase)>0.8;
-const now=performance.now();
-// Use ONLY index fingertip for aim; freeze briefly while the thumb fires.
+if(!handReady){overlapStart=0;handAim=null;diag('Hand tracking ready • show your index finger to the rear camera');return}
+const tip=handLandmarks[8];handSeenAt=performance.now();
 if(!handAim)handAim={x:tip.x,y:tip.y};
-if(now>aimHoldUntil){const blend=.3;handAim.x=handAim.x*(1-blend)+tip.x*blend;handAim.y=handAim.y*(1-blend)+tip.y*blend}
-const closed=triggerDistance<triggerSensitivity&&indexExtended;
-const open=triggerDistance>triggerSensitivity+.28;
-if(closed){thumbFrames++;thumbOpenFrames=0}else if(open){thumbOpenFrames++;thumbFrames=0}else{thumbFrames=0}
-if(thumbOpenFrames>=2)handClosed=false;
-if(thumbFrames>=2&&!handClosed){handClosed=true;aimHoldUntil=now+230;shoot();diag('SHOT! Thumb click detected • release thumb to reload')}
-else if(now>aimHoldUntil)diag('HAND FOUND • thumb '+(handClosed?'RELEASE TO REARM':closed?'CLICKING':'READY')+' • trigger '+triggerDistance.toFixed(2)+' / '+triggerSensitivity.toFixed(2))
+else {handAim.x=handAim.x*.65+tip.x*.35;handAim.y=handAim.y*.65+tip.y*.35}
+diag('FINGER TRACKED • move crosshair onto duck to shoot automatically');
 });
 handMode=true;diag('Hand model loaded • show hand to rear camera');const loop=async()=>{if(!handMode)return;if(v.readyState>=2&&!handBusy){handBusy=true;try{await hands.send({image:v})}catch(e){diag('Hand processing error: '+e.message);handMode=false}finally{handBusy=false}}setTimeout(loop,85)};loop()
 }catch(e){handMode=false;diag('Hand recognition unavailable: '+e.message+'. Phone aiming and FIRE remain available.')}
 }
-el('hands').onclick=()=>{if(!playing)return;loadHands()};el('sensitivity').onclick=()=>{const levels=[{v:1.05,t:'NORMAL'},{v:1.3,t:'EASY'},{v:.8,t:'PRECISE'}];const current=levels.findIndex(x=>x.v===triggerSensitivity);const next=levels[(current+1)%levels.length];triggerSensitivity=next.v;el('sensitivity').textContent='TRIGGER: '+next.t;thumbFrames=0;thumbOpenFrames=0;handClosed=false};
-el('begin').onclick=async()=>{audioStart();motionPermission();el('panel').style.display='none';playing=true;last=performance.now();next=last+300;hud();requestAnimationFrame(frame);try{const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'}}});v.srcObject=stream;await v.play();status('Camera ready • turn phone to aim • FIRE to shoot')}catch(e){status('Camera unavailable: '+e.message+' • game still works')}};
+el('hands').onclick=()=>{if(!playing||handMode)return;loadHands()};
+el('begin').onclick=async()=>{audioStart();motionPermission();el('panel').style.display='none';playing=true;last=performance.now();next=last+300;hud();requestAnimationFrame(frame);try{const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'}}});v.srcObject=stream;await v.play();status('Camera ready • loading finger tracking automatically');loadHands()}catch(e){status('Camera unavailable: '+e.message+' • game still works')}};
 })();
 </script></body></html>
