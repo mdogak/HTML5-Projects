@@ -1,0 +1,53 @@
+<!doctype html><html lang="en"><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Iron Keep • Fortress Escape</title><style>
+*{box-sizing:border-box}body{margin:0;background:#111416;color:#f1e8d6;font:600 16px system-ui;overflow:hidden;touch-action:none}canvas{width:100vw;height:100dvh;display:block;image-rendering:pixelated}header,footer,#cover{position:fixed}header{inset:12px 12px auto;display:flex;align-items:center;justify-content:space-between;gap:8px;text-shadow:0 2px 4px black;font: bold 14px monospace}button{background:#171d20e8;color:#fff3d6;border:1px solid #777465;border-radius:5px;padding:10px;font:inherit;touch-action:none;user-select:none}footer{inset:auto 12px max(12px,env(safe-area-inset-bottom));display:flex;align-items:end;justify-content:space-between;pointer-events:none}footer div,footer button{pointer-events:auto}footer button{min-width:45px;min-height:46px}#fire,#start{background:#efae47;color:#201710;border:0;font-weight:900}#cover{inset:0;display:grid;place-items:center;background:#0b1015aa}article{width:min(430px,90vw);padding:26px;background:#171c20f5;border-top:4px solid #eaae48;box-shadow:0 12px 60px #0009}h1{font:900 clamp(34px,8vw,64px)/1 system-ui;margin:8px 0;color:#ffda91;letter-spacing:-.055em}small{letter-spacing:.18em;color:#cfba91}p{line-height:1.5}#cover[hidden]{display:none}#status{background:#10171bbd;padding:8px}#start{width:100%}
+</style><canvas id="view" width=400 height=240></canvas><header><span id="status"></span><button id="pause">Ⅱ Pause</button></header><footer><div><button data-key="ArrowLeft">↶</button> <button data-key="w">▲</button> <button data-key="s">▼</button> <button data-key="ArrowRight">↷</button></div><button id="fire" data-key=" ">FIRE</button></footer><section id="cover"><article><small>FORTRESS ESCAPE</small><h1 id="titleText">IRON KEEP</h1><p id="desc">Break through three machine-guarded fortress floors. Find the gold key, then reach the green lift.</p><p>Hold ▲ to walk and drag the view to turn. On keyboard use WASD, ← → and Space to fire. The map marks the key in gold and lift in green.</p><button id="start">Enter the gatehouse</button></article></section><script>
+const c=view.getContext('2d'), keys=new Set(), names=['Gatehouse','Copper Foundry','Midnight Vault'], colors=[[126,105,92],[151,84,57],[78,101,130]], depths=new Float32Array(400);
+let level,map,x,y,angle,guards,key,lift,hasKey,hp,mode='intro',last=0,cool=0,flash=0,hurt=0,elapsed=0,score=0;
+function load(n){
+ level=n;let seed=101+n*617;const rnd=()=>((seed=seed*16807%2147483647)/2147483647);
+ const side=11+n*2;map=Array.from({length:side},()=>Array(side).fill(1));
+ function carve(a,b){map[b][a]=0;let dirs=[[2,0],[-2,0],[0,2],[0,-2]];
+ for(let i=3;i;i--){let j=Math.floor(rnd()*(i+1));[dirs[i],dirs[j]]=[dirs[j],dirs[i]]}
+ for(const [dx,dy] of dirs){let u=a+dx,v=b+dy;if(u>0&&v>0&&u<side-1&&v<side-1&&map[v][u]){map[b+dy/2][a+dx/2]=0;carve(u,v)}}}
+ carve(1,1);for(let i=0;i<side;i++){let a=1+Math.floor(rnd()*(side-2)),b=1+Math.floor(rnd()*(side-2));if(!map[b][a-1]&&!map[b][a+1])map[b][a]=0}
+ x=y=1.5;angle=map[1][2]?Math.PI/2:0;hasKey=false;hp=100;cool=hurt=flash=0;
+ key={x:side-1.5,y:1.5,type:'key'};lift={x:side-1.5,y:side-1.5,type:'lift'};guards=[];
+ for(let i=0;i<4+n*3;i++){let a=1.5+2*Math.floor(rnd()*((side-1)/2)),b=1.5+2*Math.floor(rnd()*((side-1)/2));if(a+b>5&&!guards.some(g=>g.x===a&&g.y===b)&&!(a===key.x&&(b===key.y||b===lift.y)))guards.push({x:a,y:b,type:'guard',hp:2,t:1.2})}
+}
+function wall(a,b){return map[Math.floor(b)]?.[Math.floor(a)]!==0}
+function clear(a,b){let d=Math.hypot(a-x,b-y);for(let t=.1;t<d;t+=.12)if(wall(x+(a-x)*t/d,y+(b-y)*t/d))return false;return true}
+function dialog(m,t,d,b){mode=m;keys.clear();cover.hidden=false;titleText.textContent=t;desc.textContent=d;start.textContent=b}
+function update(dt){angle+=((+keys.has('ArrowRight'))-(+keys.has('ArrowLeft')))*2.3*dt;
+ let f=+((keys.has('w')||keys.has('ArrowUp')))-+(keys.has('s')||keys.has('ArrowDown')),s=+keys.has('d')-+keys.has('a'),v=2.6*dt/(Math.hypot(f,s)||1);
+ let dx=(Math.cos(angle)*f-Math.sin(angle)*s)*v,dy=(Math.sin(angle)*f+Math.cos(angle)*s)*v;
+ if(!wall(x+dx+Math.sign(dx)*.18,y))x+=dx;if(!wall(x,y+dy+Math.sign(dy)*.18))y+=dy;
+ cool-=dt;flash-=dt;hurt-=dt;
+ if(keys.has(' ')&&cool<=0){cool=.24;flash=.09;let hit=guards.map(g=>({g,d:Math.hypot(g.x-x,g.y-y),a:Math.atan2(g.y-y,g.x-x)-angle})).filter(o=>Math.cos(o.a)>0&&Math.abs(Math.sin(o.a))*o.d<.32&&clear(o.g.x,o.g.y)).sort((a,b)=>a.d-b.d)[0];if(hit&&--hit.g.hp<=0){guards=guards.filter(g=>g!==hit.g);score+=100}}
+ for(const g of guards){let d=Math.hypot(g.x-x,g.y-y);if(d<6&&clear(g.x,g.y)){if(d>.65){let vx=(x-g.x)/d*dt*.62,vy=(y-g.y)/d*dt*.62;if(!wall(g.x+vx,g.y))g.x+=vx;if(!wall(g.x,g.y+vy))g.y+=vy}
+ if(d<1.15&&(g.t-=dt)<=0){hp-=10;hurt=.17;g.t=1.3}}}
+ if(hp<=0)return dialog('dead','Signal lost','The sentinels caught you on '+names[level]+'.','Retry floor');
+ if(!hasKey&&Math.hypot(key.x-x,key.y-y)<.62)hasKey=true;
+ if(hasKey&&Math.hypot(lift.x-x,lift.y-y)<.65){if(level<2){load(level+1);dialog('ready',names[level],'Lift arrived. Find this floor’s key.','Open lift')}else dialog('won','You escaped','All three floors cleared. Sentinel score '+score+'.','Play again')}
+}
+const patterns={guard:['   2222   ','  233332  ','  211112  ','  244442  ',' 22222222 ','2233333322','2234433322','  222222  ','  22  22  ','  11  11  '],key:[' 555    ','55 55   ',' 5555555','     5 5'],lift:['66666666','61111116','61222216','61266216','61266216','61266216','66666666']},ink=['','#161b20','#566269','#a7b3a9','#ff572e','#ffd24c','#60e5a1'];
+const sprites={};for(const [type,rows] of Object.entries(patterns)){let img=document.createElement('canvas');img.width=rows[0].length;img.height=rows.length;let ctx=img.getContext('2d');rows.forEach((row,j)=>[...row].forEach((p,i)=>{if(ink[p]){ctx.fillStyle=ink[p];ctx.fillRect(i,j,1,1)}}));sprites[type]=img}
+function render(){let W=view.width,H=view.height,mid=H/2,F=W*.77;let bg=c.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#161d24');bg.addColorStop(.49,'#414749');bg.addColorStop(.5,'#292929');bg.addColorStop(1,'#67584b');c.fillStyle=bg;c.fillRect(0,0,W,H);
+ let cs=Math.cos(angle),sn=Math.sin(angle);
+ for(let i=0;i<W;i++){let u=(i-W/2)/F,rx=cs-sn*u,ry=sn+cs*u,a=Math.floor(x),b=Math.floor(y),sx=Math.sign(rx)||1,sy=Math.sign(ry)||1,tx=Math.abs(1/rx),ty=Math.abs(1/ry),hx=(rx<0?x-a:a+1-x)*tx,hy=(ry<0?y-b:b+1-y)*ty,d,side;
+ do{side=hx<hy;if(side){d=hx;hx+=tx;a+=sx}else{d=hy;hy+=ty;b+=sy}}while(!map[b][a]);
+ depths[i]=d;let h=F/d,top=mid-h/2,pos=side?y+ry*d:x+rx*d,shade=(side?.94:.74)/(1+d*.115),rgb=colors[level];
+ for(let j=0;j<5;j++){let seam=((pos*2+(j%2)*.5)%1)<.04,k=shade*(seam?.56:1+((a*7+b*3+j)%4)*.025);c.fillStyle='rgb('+rgb.map(v=>v*k|0)+')';c.fillRect(i,top+j*h/5,1,h/5+1);c.fillStyle='#29282a';c.fillRect(i,top+j*h/5,1,Math.min(2,h*.012))}}
+ c.imageSmoothingEnabled=false;let objects=[...guards,lift,...(hasKey?[]:[key])].map(o=>({o,z:(o.x-x)*cs+(o.y-y)*sn,lat:-(o.x-x)*sn+(o.y-y)*cs})).filter(o=>o.z>.08).sort((a,b)=>b.z-a.z);
+ for(let {o,z,lat} of objects){let img=sprites[o.type],h=F/z*(o.type==='key'?.26:.8),w=h*img.width/img.height,left=W/2+lat*F/z-w/2,top=mid+F/z*.49-h-(o.type==='key'?F/z*.2:0);for(let i=Math.max(0,Math.ceil(left));i<Math.min(W,left+w);i++)if(depths[i]>z)c.drawImage(img,Math.min(img.width-1,Math.floor((i-left)/w*img.width)),0,1,img.height,i,top,1,h)}
+ c.fillStyle='#ece4cb';c.fillRect(W/2-4,mid,9,1);c.fillRect(W/2,mid-4,1,9);
+ const gunY=H-(flash>0?29:34);c.fillStyle='#15191b';c.fillRect(W/2-15,gunY+11,30,30);c.fillRect(W/2-7,gunY,14,34);c.fillStyle='#899293';c.fillRect(W/2-5,gunY+2,4,26);if(flash>0){c.fillStyle='#ffdc75';c.fillRect(W/2-6,gunY-10,12,10)}
+ let scale=3;map.forEach((r,j)=>r.forEach((v,i)=>{c.fillStyle=v?'#242931':'#73716a';c.fillRect(6+i*scale,31+j*scale,scale,scale)}));for(let o of [lift,...(hasKey?[]:[key]),{x,y,type:'me'}]){c.fillStyle=o.type==='lift'?'#4f9':o.type==='key'?'#fd4':'#fff';c.fillRect(5+o.x*scale,30+o.y*scale,3,3)}
+ if(hurt>0){c.fillStyle='#aa111155';c.fillRect(0,0,W,H)}
+ document.querySelector('#status').textContent=(level+1)+'/3 '+names[level]+' · HP '+hp+' · '+(hasKey?'KEY ✓':'Find key')}
+let checkpoint=0;start.onclick=()=>{if(mode==='won'){score=checkpoint=0;load(0)}if(mode==='dead'){score=checkpoint;load(level)}if(mode==='ready')checkpoint=score;mode='play';cover.hidden=true};
+function suspend(){if(mode==='play')dialog('paused','Paused',names[level],'Resume')}pause.onclick=suspend;onblur=suspend;
+onkeydown=e=>{if(e.key==='Escape')return suspend();if(mode==='play'){e.preventDefault();keys.add(e.key.toLowerCase().length===1?e.key.toLowerCase():e.key)}};onkeyup=e=>keys.delete(e.key.length===1?e.key.toLowerCase():e.key);
+document.querySelectorAll('[data-key]').forEach(b=>{b.onpointerdown=e=>{b.setPointerCapture(e.pointerId);keys.add(b.dataset.key)};b.onlostpointercapture=()=>keys.delete(b.dataset.key)});
+let drag=null;view.onpointerdown=e=>{view.setPointerCapture(e.pointerId);drag=e.clientX};view.onpointermove=e=>{if(drag!==null&&mode==='play'){angle+=(e.clientX-drag)*.009;drag=e.clientX}};view.onlostpointercapture=()=>drag=null;
+load(0);function frame(t){let dt=Math.min(.05,(t-last)/1000);last=t;view.height=Math.max(150,Math.min(640,Math.round(400*innerHeight/innerWidth)));if(mode==='play')update(dt);render();requestAnimationFrame(frame)}requestAnimationFrame(frame)
+</script></html>
