@@ -17,6 +17,16 @@ function paint(open){if(!artReady)return;const w=canvas.width,h=canvas.height;br
  for(let x=-rx;x<rx;x+=2){let weight=Math.exp(-Math.pow(x/(rx*.6),4)),closed=(1-open)*.96*weight;let start=y,chin=y+ry,bottom=y+ry*2,compressed=ry*(1-closed),sx=cx+x;
  brush.drawImage(pup,sx,start,2,ry,sx,start,2,compressed+.5);brush.drawImage(pup,sx,chin,2,ry,sx,start+compressed,2,bottom-start-compressed+.5)}}
 pup.onload=()=>{canvas.width=pup.naturalWidth;canvas.height=pup.naturalHeight;artReady=true;paint(0)};
+const sample=new Audio('denali.mp3');
+sample.preload='auto';
+let sampleTimer;
+el('test').onclick=async()=>{
+ clearTimeout(sampleTimer);
+ sample.currentTime=0;
+ try{await sample.play();el('test').textContent='Playing wolf call…';sampleTimer=setTimeout(()=>sample.pause(),2100)}
+ catch{el('test').textContent='Retry sound test'}
+};
+sample.onpause=()=>el('test').textContent='Test wolf sound';
 function stopSounds(){for(let src of playing){try{src.stop()}catch{}}playing.clear();liveCall=null}
 function sound(duration,pitch=1,volume=.8){if(!recording||!ctx)return;let s=ctx.createBufferSource(),g=ctx.createGain(),t=ctx.currentTime;s.buffer=recording;s.playbackRate.value=pitch;g.gain.setValueAtTime(.001,t);g.gain.exponentialRampToValueAtTime(volume,t+.04);g.gain.setValueAtTime(volume,t+Math.max(.05,duration-.1));g.gain.exponentialRampToValueAtTime(.001,t+duration);s.connect(g).connect(ctx.destination);playing.add(s);s.onended=()=>{playing.delete(s);s.disconnect();g.disconnect()};s.start(t,.08);s.stop(t+duration);return s}
 function cleanup(){session++;version++;stopSounds();streams.forEach(s=>s.getTracks().forEach(t=>t.stop()));streams=[];micSource?.disconnect();micSource=null;analyser=null;el('cam').srcObject=null;held=voiceOpen=false;mouth=0;seen=-Infinity;lastVideo=-1}
@@ -27,8 +37,8 @@ function badge(){el('tracking').textContent=mode==='touch'?'Touch':mode==='quiet
 async function stream(constraints,token){const s=await navigator.mediaDevices.getUserMedia(constraints);if(token!==session){s.getTracks().forEach(t=>t.stop());throw Error('cancelled')}streams.push(s);return s}
 async function camera(token){let s=await stream({video:{facingMode:'user',width:{ideal:480}},audio:false},token);const v=el('cam');v.srcObject=s;await v.play();if(!modelPromise)modelPromise=(async()=>{const root='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304',lib=await import(root+'/vision_bundle.mjs'),files=await lib.FilesetResolver.forVisionTasks(root+'/wasm');return lib.FaceLandmarker.createFromOptions(files,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'},numFaces:1,runningMode:'VIDEO'})})().catch(e=>{modelPromise=null;throw e});model=await modelPromise}
 async function mic(token){let s=await stream({audio:{echoCancellation:true,noiseSuppression:true},video:false},token);micSource=ctx.createMediaStreamSource(s);analyser=ctx.createAnalyser();analyser.fftSize=1024;wave=new Float32Array(1024);micSource.connect(analyser)}
-async function start(choice){cleanup();let token=session;mode=choice;phase='setup';round=points=0;noise=.008;el('intro').hidden=true;art.hidden=true;canvas.hidden=false;el('play').hidden=el('top').hidden=false;el('pack').replaceChildren();el('beats').replaceChildren();el('location').textContent='High country';el('wolf').textContent='The pack';text('Entering the valley','Allow camera access for the puppy’s muzzle. Mic mode also listens for your howl.');buttons();badge();
-try{ctx??=new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();bufferPromise??=fetch('denali.mp3').then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).catch(e=>{bufferPromise=null;throw e});await bufferPromise}catch{if(token===session){text('Audio unavailable','Return home and try again to load the recorded wolf calls.')}return}
+async function start(choice){sample.pause();cleanup();let token=session;mode=choice;phase='setup';round=points=0;noise=.008;el('intro').hidden=true;art.hidden=true;canvas.hidden=false;el('play').hidden=el('top').hidden=false;el('pack').replaceChildren();el('beats').replaceChildren();el('location').textContent='High country';el('wolf').textContent='The pack';text('Entering the valley','Allow camera access for the puppy’s muzzle. Mic mode also listens for your howl.');buttons();badge();
+try{ctx??=new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();bufferPromise??=fetch('denali.mp3').then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).catch(e=>{bufferPromise=null;throw e});recording=await bufferPromise}catch{if(token===session){text('Audio unavailable','Return home and try again to load the recorded wolf calls.')}return}
 if(token!==session)return;
 // Sequential device requests keep the permission prompts legible on mobile.
 if(choice==='voice')try{await mic(token)}catch{}
@@ -36,7 +46,10 @@ if(token!==session)return;if(choice!=='touch')try{await camera(token)}catch{}
 if(token!==session)return;if(choice==='quiet'&&(!model||!el('cam').srcObject?.active))mode='touch';if(choice==='voice'&&!analyser)mode=model&&el('cam').srcObject?.active?'quiet':'touch';badge();listen()}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 function light(i){Array.from(el('beats').children).forEach((b,j)=>b.classList.toggle('on',i===j))}
-async function listen(){let serial=++version;stopSounds();phase='listen';held=false;began=null;notes=[];const [name,place,pattern]=pack[round];el('wolf').textContent=name+' · '+place;el('location').textContent=round+' / '+pack.length+' wolves';el('beats').replaceChildren(...pattern.map(d=>{let i=document.createElement('i');i.style.flex=d;return i}));text('Listen to '+name,'Watch the gold bars for the length of each howl.');buttons();await wait(450);
+async function listen(){let serial=++version;stopSounds();
+if(ctx.state!=='running'){
+ phase='audioPaused';text('Enable wolf audio','Tap below to hear the call.');buttons('Play wolf call');return
+}phase='listen';held=false;began=null;notes=[];const [name,place,pattern]=pack[round];el('wolf').textContent=name+' · '+place;el('location').textContent=round+' / '+pack.length+' wolves';el('beats').replaceChildren(...pattern.map(d=>{let i=document.createElement('i');i.style.flex=d;return i}));text('Listen to '+name,'Watch the gold bars for the length of each howl.');buttons();await wait(450);
 for(let i=0;i<pattern.length;i++){if(serial!==version)return;light(i);sound(pattern[i],1.03-round*.036);await wait(pattern[i]*1000);if(serial!==version)return;light(-1);await wait(340)}
 if(serial!==version)return;phase='answer';responseStart=performance.now();voiceOpen=false;lastEnd=0;text('Your turn',mode==='voice'?'Howl the same long and short notes, leaving a little silence between them.':mode==='quiet'?'Open and close your mouth to answer.':'Hold and release the button for each note.');buttons('',true,true)}
 function evaluate(){phase='result';light(-1);let target=pack[round][2],quality=notes.reduce((sum,n,i)=>sum+Math.exp(-1.8*Math.abs(Math.log(n.length/target[i]))),0)/target.length;
@@ -45,7 +58,7 @@ if(score>=58){points+=score;const member=document.createElement("span");member.t
 function input(on,now){if(phase!=='answer')return;if(on&&began===null){began=now;light(notes.length);if(mode!=='voice'||held)liveCall=sound(3.8,1.15,.5)}
 if(!on&&began!==null){let n=(now-began)/1000,gap=(began-lastEnd)/1000;began=null;if(liveCall){try{liveCall.stop()}catch{}liveCall=null}light(-1);if(n<.12)return;notes.push({length:n,gap});lastEnd=now;if(notes.length===pack[round][2].length)evaluate()}}
 async function finale(){phase='final';began=null;lastEnd=performance.now();buttons('Play again');text('Five voices. One pack.',points+' rhythm points. Howl again or hold the button to lead the chorus.');el('wolf').textContent='Ash · Juniper · Flint · Willow · Luna';buttons('Play again',false,true);sound(3.4,.83,.5)}
-el('next').onclick=()=>{if(phase==='result')listen();else if(phase==='wonRound'){if(round===4)finale();else{round++;listen()}}else if(phase==='final')home()};el('home').onclick=home;el('repeat').onclick=listen;for(let m of ['voice','quiet','touch'])el(m).onclick=()=>start(m);
+el('next').onclick=()=>{if(phase==='audioPaused'){ctx.resume().then(listen).catch(()=>text('Audio paused','Tap Play wolf call to retry.'))}else if(phase==='result')listen();else if(phase==='wonRound'){if(round===4)finale();else{round++;listen()}}else if(phase==='final')home()};el('home').onclick=home;el('repeat').onclick=listen;for(let m of ['voice','quiet','touch'])el(m).onclick=()=>start(m);
 el('hold').onpointerdown=e=>{e.preventDefault();el('hold').setPointerCapture(e.pointerId);held=true;};
 el('hold').onlostpointercapture=()=>held=false;window.addEventListener('pagehide',home);
 function frame(now){if(phase!=='home'){const video=el('cam');if(model&&video.readyState>=2&&now-lastInfer>75&&video.currentTime!==lastVideo){lastInfer=now;lastVideo=video.currentTime;try{let p=model.detectForVideo(video,now).faceLandmarks[0];if(p){mouth=Math.min(1,Math.max(0,(Math.hypot(p[13].x-p[14].x,p[13].y-p[14].y)/Math.max(.001,Math.hypot(p[33].x-p[263].x,p[33].y-p[263].y))-.018)*4.8));seen=now}}catch{}}
