@@ -114,7 +114,7 @@ if(ctx.state!=='running'){
  phase='audioPaused';text('Enable wolf audio','Tap below to hear the call.');buttons('Play wolf call');return
 }el('beats').hidden=false;activeBeat=null;phase='listen';held=false;began=null;notes=[];const [name,place,pattern]=pack[round];el('wolf').textContent=name+' · '+place;el('location').textContent=joined.size+' / '+pack.length+' wolves';el('beats').replaceChildren(...pattern.map(d=>{let i=document.createElement('i');i.style.flex=d;return i}));text('Listen to '+name,'Watch the gold bars for the length of each howl.');buttons();await wait(450);
 for(let i=0;i<pattern.length;i++){if(serial!==version)return;beginBeat(i,performance.now());sound(pattern[i],1);await wait(pattern[i]*1000);if(serial!==version)return;fillBeat(i,1);activeBeat=null;await wait(340)}
-if(serial!==version)return;clearBars();phase='answer';responseStart=performance.now();voiceOpen=false;lastEnd=0;text('Your turn',mode==='voice'?'Follow the gold bars with your howl. You can take a breath between calls.':mode==='quiet'?'Open your mouth for a howl, then close it to welcome the wolf.':'Hold the button for a howl, then release it to welcome the wolf.');buttons('',true,true)}
+if(serial!==version)return;clearBars();phase='answer';responseStart=performance.now();voiceOpen=false;lastEnd=0;text('Your turn',mode==='voice'?'Follow the gold bars with your howl. You can take a breath between calls.':mode==='quiet'?'Open your mouth for a howl, then close it to welcome the wolf.':'Hold the button for a howl, then release it to welcome the wolf.');el('message').textContent+=' Tap Done howling when you finish.';buttons('',true,true)}
 function evaluate(){
  if(phase!=='answer'||!notes.length)return;
  const duration=notes.reduce((sum,n)=>sum+n.length,0),target=pack[round][2].reduce((sum,d)=>sum+d,0);
@@ -133,28 +133,30 @@ function replyBars(seconds){
   fillBeat(i,seconds/duration);seconds-=duration;
  }
 }
+let voicedSeconds=0,previousFrame=null,wasVoicing=false;
 function input(on,now){
  if(phase!=='answer')return;
- const pattern=pack[round][2],previous=notes.reduce((sum,n)=>sum+n.length,0),total=pattern.reduce((sum,d)=>sum+d,0);
- if(on){
-  lastSignal=now;
-  if(began===null){began=now;recordHowl();el('title').textContent='I hear you…';
-   if(!movie&&(mode!=='voice'||held))liveCall=sound(Math.min(recording?.duration||4,total-previous+.3),1,.5)}
+ if(began===null){
+  if(!on)return;
+  began=now;voicedSeconds=0;previousFrame=now;wasVoicing=false;recordHowl();
+  buttons('Done howling',false,true);el('title').textContent='Your howl';
+  el('message').textContent='Take a breath or keep going. Tap Done howling when you finish.';
  }
- if(began!==null){
-  const length=(lastSignal-began)/1000;
-  if(notes.length){fillBeat(notes.length,length/pattern[notes.length])}else replyBars(length);
-  if(!on&&now-lastSignal>=230){
-   began=null;if(liveCall){try{liveCall.stop()}catch{}liveCall=null}pauseMovie();
-   if(length<.13){if(notes.length)fillBeat(notes.length,0);else replyBars(0);el('title').textContent='Your turn';return}
-   notes.push({length});lastEnd=now;
-   if(notes.length>=pattern.length||previous+length>=total){evaluate();return}
-  }
- }
- if(!on&&began===null&&notes.length&&now-lastEnd>=800)evaluate();
+ if(on&&wasVoicing)voicedSeconds+=Math.min(.15,(now-previousFrame)/1000);
+ previousFrame=now;
+ if(on&&!wasVoicing&&!movie&&(mode!=='voice'||held))liveCall=sound(recording?.duration||4,1,.5);
+ if(!on&&wasVoicing&&liveCall){try{liveCall.stop()}catch{}liveCall=null}
+ wasVoicing=on;
+ replyBars(voicedSeconds);
+}
+function submitReply(){
+ if(phase!=='answer'||began===null)return;
+ notes=[{length:voicedSeconds}];began=null;held=false;
+ if(liveCall){try{liveCall.stop()}catch{}liveCall=null}
+ evaluate();
 }
 function finale(){phase='final';began=null;lastEnd=performance.now();el('beats').hidden=true;buttons('Play again');text('Your pack is home',joined.size+' of 5 wolves joined · '+points+' rhythm points.');el('wolf').textContent=Array.from(joined,i=>pack[i][0]).join(' · ');finishMovie();sound(3.4,.83,.5)}
-el('next').onclick=()=>{if(phase==='audioPaused'){ctx.resume().then(listen).catch(()=>text('Audio paused','Tap Play wolf call to retry.'))}else if(phase==='transition'){if(round===pack.length-1)finale();else{round++;listen()}}else if(phase==='final')home()};el('home').onclick=home;el('repeat').onclick=()=>{pauseMovie();listen()};for(let m of ['voice','quiet','touch'])el(m).onclick=()=>start(m);
+el('next').onclick=()=>{if(phase==='answer')submitReply();else if(phase==='audioPaused'){ctx.resume().then(listen).catch(()=>text('Audio paused','Tap Play wolf call to retry.'))}else if(phase==='transition'){if(round===pack.length-1)finale();else{round++;listen()}}else if(phase==='final')home()};el('home').onclick=home;el('repeat').onclick=()=>{pauseMovie();listen()};for(let m of ['voice','quiet','touch'])el(m).onclick=()=>start(m);
 el('hold').onpointerdown=e=>{e.preventDefault();el('hold').setPointerCapture(e.pointerId);held=true;};
 el('hold').onlostpointercapture=()=>held=false;window.addEventListener('pagehide',home);
 function frame(now){if(activeBeat&&(phase==='listen'||phase==='answer'))fillBeat(activeBeat.index,((phase==='answer'?lastSignal:now)-activeBeat.start)/activeBeat.duration);if(phase!=='home'){const video=el('cam');if(model&&video.readyState>=2&&now-lastInfer>75&&video.currentTime!==lastVideo){lastInfer=now;lastVideo=video.currentTime;try{let p=model.detectForVideo(video,now).faceLandmarks[0];if(p){mouth=Math.min(1,Math.max(0,(Math.hypot(p[13].x-p[14].x,p[13].y-p[14].y)/Math.max(.001,Math.hypot(p[33].x-p[263].x,p[33].y-p[263].y))-.018)*4.8));seen=now}}catch{}}
