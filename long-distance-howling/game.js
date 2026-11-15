@@ -66,7 +66,7 @@ function syncScene(){
 }
 new ResizeObserver(syncScene).observe(canvas);
 const positions=[
- [17,68,30],[82,65,31],[7,53,17],[93,50,17],[26,43,14]
+ [22,73,21],[78,73,21],[8,54,14],[92,54,14],[76,35,10]
 ];
 function recruit(index){
  const [left,bottom,width]=positions[index],img=new Image();
