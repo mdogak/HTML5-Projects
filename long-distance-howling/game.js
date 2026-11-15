@@ -18,16 +18,6 @@ function paint(open){if(!artReady)return;const w=canvas.width,h=canvas.height;br
  brush.drawImage(pup,sx,start,2,ry,sx,start,2,compressed+.5);brush.drawImage(pup,sx,chin,2,ry,sx,start+compressed,2,bottom-start-compressed+.5)}
  drawPack(w,h);}
 pup.onload=()=>{canvas.width=pup.naturalWidth;canvas.height=pup.naturalHeight;artReady=true;paint(0)};
-const sample=new Audio('yellowstone.mp3');
-sample.preload='auto';
-let sampleTimer;
-el('test').onclick=async()=>{
- clearTimeout(sampleTimer);
- sample.currentTime=0;
- try{await sample.play();el('test').textContent='Playing wolf call…';sampleTimer=setTimeout(()=>sample.pause(),4250)}
- catch{el('test').textContent='Retry sound test'}
-};
-sample.onpause=()=>el('test').textContent='Test wolf sound';
 function stopSounds(){for(let src of playing){try{src.stop()}catch{}}playing.clear();liveCall=null}
 function sound(duration,pitch=1,volume=.8){if(!recording||!ctx)return;let s=ctx.createBufferSource(),g=ctx.createGain(),t=ctx.currentTime;s.buffer=recording;s.playbackRate.value=pitch;g.gain.setValueAtTime(.001,t);g.gain.exponentialRampToValueAtTime(volume,t+.04);g.gain.setValueAtTime(volume,t+Math.max(.05,duration-.1));g.gain.exponentialRampToValueAtTime(.001,t+duration);s.connect(g).connect(ctx.destination);playing.add(s);s.onended=()=>{playing.delete(s);s.disconnect();g.disconnect()};s.start(t,0);s.stop(t+duration);return s}
 let movie=null,savedFile=null,movieURL='';
@@ -36,13 +26,14 @@ function discardMovie(){
  if(movie){movie.onstop=null;if(movie.state!=='inactive')movie.stop();movie=null}
  if(movieURL)URL.revokeObjectURL(movieURL);movieURL='';savedFile=null;el('saveMovie').hidden=true;movieStatus('');
 }
+function usableTrack(t){return t.readyState==='live'&&t.enabled&&!t.muted}
 function prepareMovie(){
  if(!el('film').checked)return;
- const tracks=streams.flatMap(s=>s.getTracks()).filter(t=>t.readyState==='live');
- if(!window.MediaRecorder||!tracks.some(t=>t.kind==='video')){movieStatus('Selfie video unavailable. You can still play.');return}
+ const capture=streams.find(s=>s.getVideoTracks().some(usableTrack)&&s.getAudioTracks().some(usableTrack));
+ if(!capture||!window.MediaRecorder){movieStatus('Recording unavailable. Allow both the microphone and camera, then restart to record.');return}
  try{
-  const type=['video/mp4','video/webm;codecs=vp8,opus','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
-  const rec=new MediaRecorder(new MediaStream(tracks),type?{mimeType:type}:undefined),chunks=[];
+  const type=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/webm;codecs=vp8,opus','video/mp4','video/webm'].find(t=>MediaRecorder.isTypeSupported(t));
+  const rec=new MediaRecorder(capture,type?{mimeType:type}:undefined),chunks=[];
   movie=rec;rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
   rec.onerror=()=>movieStatus('Selfie recording interrupted.');
   rec.onstop=()=>{if(movie!==rec)return;
@@ -51,10 +42,10 @@ function prepareMovie(){
    savedFile=new File([blob],'My-wolf-howls.'+(blob.type.includes('webm')?'webm':'mp4'),{type:blob.type});
    movieURL=URL.createObjectURL(savedFile);el('saveMovie').hidden=false;movieStatus('Your howl video is ready.');
   };
-  movieStatus(tracks.some(t=>t.kind==='audio')?'Selfie recording armed':'Selfie video only · microphone unavailable');
+  movieStatus('Selfie video + microphone ready');
  }catch{movieStatus('Selfie recording unavailable in this browser.')}
 }
-function recordHowl(){if(!movie)return;try{if(movie.state==='inactive')movie.start();else if(movie.state==='paused')movie.resume();movieStatus('● Recording your howl')}catch{movieStatus('Could not start selfie recording.')}}
+function recordHowl(){if(!movie)return;if(!movie.stream.getAudioTracks().some(usableTrack)){movieStatus('Microphone interrupted. Check your microphone before recording.');return}try{if(movie.state==='inactive')movie.start();else if(movie.state==='paused')movie.resume();movieStatus('● Recording your howl')}catch{movieStatus('Could not start selfie recording.')}}
 function pauseMovie(){if(movie?.state==='recording'){movie.pause();movieStatus('Selfie recording paused')}}
 function releaseDevices(){streams.forEach(s=>s.getTracks().forEach(t=>t.stop()));streams=[];el('cam').srcObject=null;analyser=null;micSource?.disconnect();micSource=null}
 function finishMovie(){if(movie&&movie.state!=='inactive'){movieStatus('Preparing your video…');const token=session;movie.addEventListener('stop',()=>{if(token===session)releaseDevices()},{once:true});movie.stop()}else releaseDevices()}
@@ -69,14 +60,22 @@ function buttons(next='',repeat=false,hold=false){el('next').hidden=!next;el('ne
 function text(title,message){el('title').textContent=title;el('message').textContent=message}
 function badge(){el('tracking').textContent=mode==='touch'?'Touch':mode==='quiet'?'Quiet · camera':analyser?'Mic on':'Mic unavailable'}
 async function stream(constraints,token){const s=await navigator.mediaDevices.getUserMedia(constraints);if(token!==session){s.getTracks().forEach(t=>t.stop());throw Error('cancelled')}streams.push(s);return s}
-async function camera(token){let s=await stream({video:{facingMode:'user',width:{ideal:720}},audio:false},token);const v=el('cam');v.srcObject=s;await v.play();if(!modelPromise)modelPromise=(async()=>{const root='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304',lib=await import(root+'/vision_bundle.mjs'),files=await lib.FilesetResolver.forVisionTasks(root+'/wasm');return lib.FaceLandmarker.createFromOptions(files,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'},numFaces:1,runningMode:'VIDEO'})})().catch(e=>{modelPromise=null;throw e});model=await modelPromise}
-async function mic(token){let s=await stream({audio:{echoCancellation:true,noiseSuppression:true},video:false},token);micSource=ctx.createMediaStreamSource(s);analyser=ctx.createAnalyser();analyser.fftSize=1024;wave=new Float32Array(1024);micSource.connect(analyser)}
-async function start(choice){sample.pause();cleanup();let token=session;mode=choice;phase='setup';round=points=0;noise=.004;el('intro').hidden=true;art.hidden=true;canvas.hidden=false;el('play').hidden=el('top').hidden=false;el('pack').replaceChildren();joined.clear();paint(0);el('beats').replaceChildren();el('location').textContent='High country';el('wolf').textContent='The pack';text('Entering the valley','Allow camera access for the puppy’s muzzle. Mic mode also listens for your howl.');buttons();badge();
+async function camera(token,s){const v=el('cam');v.srcObject=s;await v.play();if(!modelPromise)modelPromise=(async()=>{const root='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304',lib=await import(root+'/vision_bundle.mjs'),files=await lib.FilesetResolver.forVisionTasks(root+'/wasm');return lib.FaceLandmarker.createFromOptions(files,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'},numFaces:1,runningMode:'VIDEO'})})().catch(e=>{modelPromise=null;throw e});model=await modelPromise}
+function mic(s){micSource=ctx.createMediaStreamSource(s);analyser=ctx.createAnalyser();analyser.fftSize=1024;wave=new Float32Array(1024);micSource.connect(analyser)}
+async function start(choice){cleanup();let token=session;mode=choice;phase='setup';round=points=0;noise=.004;el('intro').hidden=true;art.hidden=true;canvas.hidden=false;el('play').hidden=el('top').hidden=false;el('pack').replaceChildren();joined.clear();paint(0);el('beats').replaceChildren();el('location').textContent='High country';el('wolf').textContent='The pack';text('Entering the valley','Allow camera access for the puppy’s muzzle. Mic mode also listens for your howl.');buttons();badge();
 try{ctx??=new (window.AudioContext||window.webkitAudioContext)();await ctx.resume();bufferPromise??=fetch('yellowstone.mp3').then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).catch(e=>{bufferPromise=null;throw e});recording=await bufferPromise}catch{if(token===session){text('Audio unavailable','Return home and try again to load the recorded wolf calls.')}return}
 if(token!==session)return;
-// Sequential device requests keep the permission prompts legible on mobile.
-if(choice==='voice'||el('film').checked)try{await mic(token)}catch{}
-if(token!==session)return;if(choice!=='touch'||el('film').checked)try{await camera(token)}catch{}
+const filming=el('film').checked,video={facingMode:'user',width:{ideal:720}},audio={echoCancellation:true,noiseSuppression:false,autoGainControl:true};
+if(choice!=='touch'||filming){
+ let capture;
+ try{capture=await stream({video,audio:filming||choice==='voice'?audio:false},token)}catch{
+  if(token!==session)return;
+  try{capture=await stream(choice==='voice'?{audio}:{video},token)}catch{}
+ }
+ if(token!==session)return;
+ if(capture?.getAudioTracks().length)mic(capture);
+ if(capture?.getVideoTracks().length)try{await camera(token,capture)}catch{}
+}
 if(token!==session)return;if(choice==='quiet'&&(!model||!el('cam').srcObject?.active))mode='touch';if(choice==='voice'&&!analyser)mode=model&&el('cam').srcObject?.active?'quiet':'touch';prepareMovie();badge();listen()}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 let activeBeat=null;
@@ -110,10 +109,10 @@ if(ctx.state!=='running'){
  phase='audioPaused';text('Enable wolf audio','Tap below to hear the call.');buttons('Play wolf call');return
 }el('beats').hidden=false;activeBeat=null;phase='listen';held=false;began=null;notes=[];const [name,place,pattern]=pack[round];el('wolf').textContent=name+' · '+place;el('location').textContent=joined.size+' / '+pack.length+' wolves';el('beats').replaceChildren(...pattern.map(d=>{let i=document.createElement('i');i.style.flex=d;return i}));text('Listen to '+name,'Watch the gold bars for the length of each howl.');buttons();await wait(450);
 for(let i=0;i<pattern.length;i++){if(serial!==version)return;beginBeat(i,performance.now());sound(pattern[i],1);await wait(pattern[i]*1000);if(serial!==version)return;fillBeat(i,1);activeBeat=null;await wait(340)}
-if(serial!==version)return;clearBars();el('beats').replaceChildren(document.createElement('i'));el('beats').firstChild.style.flex='1';phase='answer';responseStart=performance.now();voiceOpen=false;lastEnd=0;text('Your turn',mode==='voice'?'Give one “awoooo” and pause to welcome the wolf. Matching the call earns bonus points.':mode==='quiet'?'Open your mouth for a howl, then close it to welcome the wolf.':'Hold the button for a howl, then release it to welcome the wolf.');buttons('',true,true)}
+if(serial!==version)return;clearBars();phase='answer';responseStart=performance.now();voiceOpen=false;lastEnd=0;text('Your turn',mode==='voice'?'Follow the gold bars with your howl. You can take a breath between calls.':mode==='quiet'?'Open your mouth for a howl, then close it to welcome the wolf.':'Hold the button for a howl, then release it to welcome the wolf.');buttons('',true,true)}
 function evaluate(){
  if(phase!=='answer'||!notes.length)return;
- const duration=notes[0].length,target=pack[round][2][0];
+ const duration=notes.reduce((sum,n)=>sum+n.length,0),target=pack[round][2].reduce((sum,d)=>sum+d,0);
  const bonus=Math.round(50*Math.min(1,duration/target,target/duration));
  activeBeat=null;phase='transition';el('beats').hidden=true;buttons();pauseMovie();
  if(duration>=.22){
@@ -124,8 +123,31 @@ function evaluate(){
  const token=version;setTimeout(()=>{if(token!==version||phase!=='transition')return;if(round===4)finale();else{round++;listen()}},1250);
 }
 let lastSignal=0;
-function input(on,now){if(phase!=='answer')return;if(on)lastSignal=now;if(on&&began===null){began=now;recordHowl();el('title').textContent='I hear you…';beginBeat(notes.length,now);if(!movie&&(mode!=='voice'||held))liveCall=sound(3.8,1.15,.5)}
-if(began!==null&&((!on&&now-lastSignal>=150)||now-began>=4200)){let n=(lastSignal-began)/1000,gap=(began-lastEnd)/1000;began=null;if(liveCall){try{liveCall.stop()}catch{}liveCall=null}activeBeat=null;fillBeat(notes.length,n<.13?0:n/pack[round][2][notes.length]);pauseMovie();if(n<.13){el('title').textContent='Your turn';return}notes.push({length:n,gap});lastEnd=now;evaluate()}if(!on&&began===null&&notes.length&&now-lastEnd>850)evaluate()}
+function replyBars(seconds){
+ for(const [i,duration] of pack[round][2].entries()){
+  fillBeat(i,seconds/duration);seconds-=duration;
+ }
+}
+function input(on,now){
+ if(phase!=='answer')return;
+ const pattern=pack[round][2],previous=notes.reduce((sum,n)=>sum+n.length,0),total=pattern.reduce((sum,d)=>sum+d,0);
+ if(on){
+  lastSignal=now;
+  if(began===null){began=now;recordHowl();el('title').textContent='I hear you…';
+   if(!movie&&(mode!=='voice'||held))liveCall=sound(Math.min(recording?.duration||4,total-previous+.3),1,.5)}
+ }
+ if(began!==null){
+  const length=(lastSignal-began)/1000;
+  if(notes.length){fillBeat(notes.length,length/pattern[notes.length])}else replyBars(length);
+  if((!on&&now-lastSignal>=230)||(notes.length?length>=pattern[notes.length]:length>=total)){
+   began=null;if(liveCall){try{liveCall.stop()}catch{}liveCall=null}pauseMovie();
+   if(length<.13){if(notes.length)fillBeat(notes.length,0);else replyBars(0);el('title').textContent='Your turn';return}
+   notes.push({length});lastEnd=now;
+   if(notes.length>=pattern.length||previous+length>=total){evaluate();return}
+  }
+ }
+ if(!on&&began===null&&notes.length&&now-lastEnd>=800)evaluate();
+}
 function finale(){phase='final';began=null;lastEnd=performance.now();el('beats').hidden=true;buttons('Play again');text('Your pack is home',joined.size+' of 5 wolves joined · '+points+' rhythm points.');el('wolf').textContent=Array.from(joined,i=>pack[i][0]).join(' · ');finishMovie();sound(3.4,.83,.5)}
 el('next').onclick=()=>{if(phase==='audioPaused'){ctx.resume().then(listen).catch(()=>text('Audio paused','Tap Play wolf call to retry.'))}else if(phase==='final')home()};el('home').onclick=home;el('repeat').onclick=()=>{pauseMovie();listen()};for(let m of ['voice','quiet','touch'])el(m).onclick=()=>start(m);
 el('hold').onpointerdown=e=>{e.preventDefault();el('hold').setPointerCapture(e.pointerId);held=true;};
