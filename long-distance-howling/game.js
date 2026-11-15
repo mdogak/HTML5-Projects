@@ -120,7 +120,7 @@ function evaluate(){
   text(pack[round][0]+' joins the pack!',(50+bonus)+' rhythm points');
  }else{text(pack[round][0]+' slips away','Try a slightly longer howl for the next wolf.')}
  el('location').textContent=joined.size+' / 5 wolves';
- const token=version;setTimeout(()=>{if(token!==version||phase!=='transition')return;if(round===4)finale();else{round++;listen()}},1250);
+ buttons(round===pack.length-1?'Finish':'Next wolf');
 }
 let lastSignal=0;
 function replyBars(seconds){
@@ -139,7 +139,7 @@ function input(on,now){
  if(began!==null){
   const length=(lastSignal-began)/1000;
   if(notes.length){fillBeat(notes.length,length/pattern[notes.length])}else replyBars(length);
-  if((!on&&now-lastSignal>=230)||(notes.length?length>=pattern[notes.length]:length>=total)){
+  if(!on&&now-lastSignal>=230){
    began=null;if(liveCall){try{liveCall.stop()}catch{}liveCall=null}pauseMovie();
    if(length<.13){if(notes.length)fillBeat(notes.length,0);else replyBars(0);el('title').textContent='Your turn';return}
    notes.push({length});lastEnd=now;
@@ -149,7 +149,7 @@ function input(on,now){
  if(!on&&began===null&&notes.length&&now-lastEnd>=800)evaluate();
 }
 function finale(){phase='final';began=null;lastEnd=performance.now();el('beats').hidden=true;buttons('Play again');text('Your pack is home',joined.size+' of 5 wolves joined · '+points+' rhythm points.');el('wolf').textContent=Array.from(joined,i=>pack[i][0]).join(' · ');finishMovie();sound(3.4,.83,.5)}
-el('next').onclick=()=>{if(phase==='audioPaused'){ctx.resume().then(listen).catch(()=>text('Audio paused','Tap Play wolf call to retry.'))}else if(phase==='final')home()};el('home').onclick=home;el('repeat').onclick=()=>{pauseMovie();listen()};for(let m of ['voice','quiet','touch'])el(m).onclick=()=>start(m);
+el('next').onclick=()=>{if(phase==='audioPaused'){ctx.resume().then(listen).catch(()=>text('Audio paused','Tap Play wolf call to retry.'))}else if(phase==='transition'){if(round===pack.length-1)finale();else{round++;listen()}}else if(phase==='final')home()};el('home').onclick=home;el('repeat').onclick=()=>{pauseMovie();listen()};for(let m of ['voice','quiet','touch'])el(m).onclick=()=>start(m);
 el('hold').onpointerdown=e=>{e.preventDefault();el('hold').setPointerCapture(e.pointerId);held=true;};
 el('hold').onlostpointercapture=()=>held=false;window.addEventListener('pagehide',home);
 function frame(now){if(activeBeat&&(phase==='listen'||phase==='answer'))fillBeat(activeBeat.index,((phase==='answer'?lastSignal:now)-activeBeat.start)/activeBeat.duration);if(phase!=='home'){const video=el('cam');if(model&&video.readyState>=2&&now-lastInfer>75&&video.currentTime!==lastVideo){lastInfer=now;lastVideo=video.currentTime;try{let p=model.detectForVideo(video,now).faceLandmarks[0];if(p){mouth=Math.min(1,Math.max(0,(Math.hypot(p[13].x-p[14].x,p[13].y-p[14].y)/Math.max(.001,Math.hypot(p[33].x-p[263].x,p[33].y-p[263].y))-.018)*4.8));seen=now}}catch{}}
