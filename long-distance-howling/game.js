@@ -21,6 +21,11 @@ pup.onload=()=>{canvas.width=pup.naturalWidth;canvas.height=pup.naturalHeight;ar
 function stopSounds(){for(let src of playing){try{src.stop()}catch{}}playing.clear();liveCall=null}
 function sound(duration,pitch=1,volume=.8){if(!recording||!ctx)return;let s=ctx.createBufferSource(),g=ctx.createGain(),t=ctx.currentTime;s.buffer=recording;s.playbackRate.value=pitch;g.gain.setValueAtTime(.001,t);g.gain.exponentialRampToValueAtTime(volume,t+.04);g.gain.setValueAtTime(volume,t+Math.max(.05,duration-.1));g.gain.exponentialRampToValueAtTime(.001,t+duration);s.connect(g).connect(ctx.destination);playing.add(s);s.onended=()=>{playing.delete(s);s.disconnect();g.disconnect()};s.start(t,0);s.stop(t+duration);return s}
 let movie=null,savedFile=null,movieURL='';
+let firstHowlTime;
+function movieTimestamp(date){
+ const pad=n=>String(n).padStart(2,'0');
+ return date.getFullYear()+'-'+pad(date.getMonth()+1)+'-'+pad(date.getDate())+'_'+[date.getHours(),date.getMinutes(),date.getSeconds()].map(pad).join('-');
+}
 function movieStatus(message){el('movieStatus').textContent=message}
 function discardMovie(){
  if(movie){movie.onstop=null;if(movie.state!=='inactive')movie.stop();movie=null}
@@ -39,13 +44,13 @@ function prepareMovie(){
   rec.onstop=()=>{if(movie!==rec)return;
    const blob=new Blob(chunks,{type:rec.mimeType||chunks[0]?.type||'video/mp4'});
    if(!blob.size){movieStatus('No video was captured.');return}
-   savedFile=new File([blob],'My-wolf-howls.'+(blob.type.includes('webm')?'webm':'mp4'),{type:blob.type});
+   savedFile=new File([blob],'My-wolf-howls_'+movieTimestamp(firstHowlTime)+'.'+(blob.type.includes('webm')?'webm':'mp4'),{type:blob.type});
    movieURL=URL.createObjectURL(savedFile);el('saveMovie').hidden=false;movieStatus('Your howl video is ready.');
   };
   movieStatus('Selfie video + microphone ready');
  }catch{movieStatus('Selfie recording unavailable in this browser.')}
 }
-function recordHowl(){if(!movie)return;if(!movie.stream.getAudioTracks().some(usableTrack)){movieStatus('Microphone interrupted. Check your microphone before recording.');return}try{if(movie.state==='inactive')movie.start();else if(movie.state==='paused')movie.resume();movieStatus('● Recording your howl')}catch{movieStatus('Could not start selfie recording.')}}
+function recordHowl(){if(!movie)return;if(!movie.stream.getAudioTracks().some(usableTrack)){movieStatus('Microphone interrupted. Check your microphone before recording.');return}try{if(movie.state==='inactive'){movie.start();firstHowlTime=new Date()}else if(movie.state==='paused')movie.resume();movieStatus('● Recording your howl')}catch{movieStatus('Could not start selfie recording.')}}
 function pauseMovie(){if(movie?.state==='recording'){movie.pause();movieStatus('Selfie recording paused')}}
 function releaseDevices(){streams.forEach(s=>s.getTracks().forEach(t=>t.stop()));streams=[];el('cam').srcObject=null;analyser=null;micSource?.disconnect();micSource=null}
 function finishMovie(){if(movie&&movie.state!=='inactive'){movieStatus('Preparing your video…');const token=session;movie.addEventListener('stop',()=>{if(token===session)releaseDevices()},{once:true});movie.stop()}else releaseDevices()}
